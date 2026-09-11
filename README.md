@@ -20,14 +20,21 @@ It is built on the very same API and settings layer as Trndi (vendored as a subm
 - **Rotated tokens are saved.** CareLink swaps its refresh token on every refresh and revokes the old one. trndi-multi writes the new one back to the account's settings the same way Trndi does, so neither program is left with a dead token at its next start.
 - **No data says why.** An account that cannot connect shows the backend's error on its tile; the others carry on.
 
-## Keys
+## Keys and flags
 
 | Key | Action |
 |-----|--------|
 | `F5` | Refetch every account now |
 | `F11` | Toggle full screen |
-| `Esc` | Leave full screen |
+| `Esc` | Leave full screen (not in kiosk mode) |
 | `Q` | Quit |
+
+| Flag | Effect |
+|------|--------|
+| `--fullscreen` | Start full screen |
+| `--kiosk` | For a dedicated wall display: full screen, pointer hidden, Escape ignored, and the machine and screen kept awake for as long as it runs. On Linux that holds a logind idle/sleep lock, the desktop session's own idle inhibition over D-Bus (GNOME, KDE and anything with a desktop portal) and turns off X11 blanking; macOS uses `caffeinate`, Windows `SetThreadExecutionState`. All best-effort, and released on exit. |
+
+On macOS pass flags through the bundle: `open -a trndi-multi --args --kiosk`.
 
 The grid refills the window on resize and picks the column count that gives the biggest tiles, so two accounts sit side by side in a wide window and one above the other in a tall one.
 

@@ -123,6 +123,19 @@ begin
   Result := RGB(COL_BACK);
 end;
 
+// The widest single word of a text in the canvas's current font: what
+// word-wrapped TextRect cannot make narrower.
+function WidestWord(cv: TCanvas; const text: string): integer;
+var
+  words: TStringArray;
+  word: string;
+begin
+  Result := 0;
+  words := text.Split([' ', LineEnding, #10, #13]);
+  for word in words do
+    Result := Max(Result, cv.TextWidth(word));
+end;
+
 constructor TAccountTile.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
@@ -321,15 +334,23 @@ begin
   end
   else
   begin
-    // No reading: say why, in the middle of the tile.
+    // No reading: say why, in the middle of the tile. Backend errors carry
+    // long unbreakable tokens (a backend code, a URL), so shrink the font
+    // until the widest word fits rather than let TextRect clip it.
     Canvas.Font.Style := [];
-    Canvas.Font.Height := -Max(11, Round(h * 0.09));
     if FState.Busy and (not FState.everFetched) then
       s := 'Connecting…'
     else if FState.err <> '' then
       s := 'No data' + LineEnding + FState.err
     else
       s := 'No reading';
+    vh := Max(11, Round(h * 0.09));
+    Canvas.Font.Height := -vh;
+    while (vh > 10) and (WidestWord(Canvas, s) > w - 2 * pad) do
+    begin
+      vh := vh - 2;
+      Canvas.Font.Height := -vh;
+    end;
     style := Canvas.TextStyle;
     style.Alignment := taCenter;
     style.Layout := tlCenter;

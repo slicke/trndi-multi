@@ -53,25 +53,36 @@ interface
 uses
 Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, LCLType,
 Math, DateUtils, trndi.types, trndimulti.accounts, trndimulti.state,
-trndimulti.tile;
+trndimulti.tile, trndimulti.kiosk;
 
 type
-  {** The main (and only) window. Built in code: no form resource. }
+  {** The main (and only) window. Built in code: no form resource.
+
+      Command line: @code(--fullscreen) starts full screen; @code(--kiosk)
+      does that and also hides the pointer, keeps the machine and display
+      awake and ignores Escape, for a dedicated wall display. }
   TfMulti = class(TForm)
   private
     FStates: array of TAccountState;
     FTiles: array of TAccountTile;
     FTimer: TTimer;
+    FKioskTimer: TTimer;
     FUnit: BGUnit;
     FEmpty: TLabel;
+    FKiosk: boolean;
+    FStartFullscreen: boolean;
+    FSnapshotTimer: TTimer;
     procedure LoadAccounts;
+    procedure SnapshotTick(Sender: TObject);
     procedure LayoutTiles;
     procedure TimerTick(Sender: TObject);
     procedure FetchDone(state: TAccountState);
     procedure FetchDue(force: boolean);
     procedure ToggleFullscreen;
+    procedure KioskApply(Sender: TObject);
   protected
     procedure Resize; override;
+    procedure DoShow; override;
     procedure KeyDown(var Key: word; Shift: TShiftState); override;
   public
     constructor Create(AOwner: TComponent); override;
@@ -90,8 +101,17 @@ const
   TICK_MS = 10000;
 
 constructor TfMulti.Create(AOwner: TComponent);
+var
+  i: integer;
 begin
   inherited CreateNew(AOwner, 0);
+  // Parsed by hand, as Trndi does: two flags do not need a parser, and the
+  // GUI has no console for a usage message anyway.
+  for i := 1 to ParamCount do
+    if ParamStr(i) = '--kiosk' then
+      FKiosk := true
+    else if ParamStr(i) = '--fullscreen' then
+      FStartFullscreen := true;
   Caption := 'Trndi Multi';
   Color := BackgroundColor;
   Width := 960;
@@ -110,6 +130,39 @@ begin
   LayoutTiles;
   FetchDue(true);
   FTimer.Enabled := true;
+
+  // Test hook: TRNDI_MULTI_SNAPSHOT=<file.png> renders the window to that
+  // file a few seconds in and quits. With QT_QPA_PLATFORM=offscreen this
+  // gives a screenshot with no display and no screen grab, for CI and for
+  // checking a tile state without taking over the desktop.
+  if GetEnvironmentVariable('TRNDI_MULTI_SNAPSHOT') <> '' then
+  begin
+    FSnapshotTimer := TTimer.Create(Self);
+    FSnapshotTimer.Interval := 6000;
+    FSnapshotTimer.OnTimer := @SnapshotTick;
+    FSnapshotTimer.Enabled := true;
+  end;
+end;
+
+procedure TfMulti.SnapshotTick(Sender: TObject);
+var
+  img: TBitmap;
+  png: TPortableNetworkGraphic;
+begin
+  FSnapshotTimer.Enabled := false;
+  img := GetFormImage;
+  try
+    png := TPortableNetworkGraphic.Create;
+    try
+      png.Assign(img);
+      png.SaveToFile(GetEnvironmentVariable('TRNDI_MULTI_SNAPSHOT'));
+    finally
+      png.Free;
+    end;
+  finally
+    img.Free;
+  end;
+  Close;
 end;
 
 destructor TfMulti.Destroy;
@@ -117,6 +170,8 @@ var
   i: integer;
 begin
   FTimer.Enabled := false;
+  if FKiosk then
+    SetKeepAwake(false);
   // Tiles first, so nothing paints a state that is being freed; the states
   // then wait for any fetch still running.
   for i := 0 to High(FTiles) do
@@ -214,6 +269,32 @@ begin
   LayoutTiles;
 end;
 
+// Full screen is asked for once the window is mapped, on a short timer, so
+// the window manager has a real window to resize; asking in the constructor
+// is ignored by some of them.
+procedure TfMulti.DoShow;
+begin
+  inherited DoShow;
+  if (FKiosk or FStartFullscreen) and (FKioskTimer = nil) then
+  begin
+    FKioskTimer := TTimer.Create(Self);
+    FKioskTimer.Interval := 300;
+    FKioskTimer.OnTimer := @KioskApply;
+    FKioskTimer.Enabled := true;
+  end;
+end;
+
+procedure TfMulti.KioskApply(Sender: TObject);
+begin
+  FKioskTimer.Enabled := false;
+  WindowState := wsFullScreen;
+  if FKiosk then
+  begin
+    Screen.Cursor := crNone;
+    SetKeepAwake(true);
+  end;
+end;
+
 procedure TfMulti.TimerTick(Sender: TObject);
 var
   i: integer;
@@ -258,7 +339,8 @@ begin
     VK_F11:
       ToggleFullscreen;
     VK_ESCAPE:
-      if WindowState = wsFullScreen then
+      // A kiosk stays full screen; Q still quits it.
+      if (WindowState = wsFullScreen) and (not FKiosk) then
         WindowState := wsNormal;
     VK_Q:
       Close;

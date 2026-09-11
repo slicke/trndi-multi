@@ -26,7 +26,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="vendor/trndi/inc"/>
-            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc"/>
+            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils"/>
             <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Conditionals Value="if TargetOS=&apos;darwin&apos; then CustomOptions += &apos; -k-lcurl&apos;;"/>
@@ -73,7 +73,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="5">
+    <Units Count="6">
       <Unit0>
         <Filename Value="src/trndimulti.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -94,6 +94,10 @@
         <Filename Value="src/trndimulti.tile.pp"/>
         <IsPartOfProject Value="True"/>
       </Unit4>
+      <Unit5>
+        <Filename Value="src/trndimulti.kiosk.pp"/>
+        <IsPartOfProject Value="True"/>
+      </Unit5>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -104,7 +108,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="vendor/trndi/inc"/>
-      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc"/>
+      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Conditionals Value="if TargetOS=&apos;darwin&apos; then CustomOptions += &apos; -k-lcurl&apos;;"/>

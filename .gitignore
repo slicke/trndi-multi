@@ -1,0 +1,6 @@
+lib/
+bin/
+backup/
+*.lps
+*.compiled
+trndi.log

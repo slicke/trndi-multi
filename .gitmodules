@@ -1,0 +1,3 @@
+[submodule "vendor/trndi"]
+	path = vendor/trndi
+	url = https://github.com/slicke/trndi.git

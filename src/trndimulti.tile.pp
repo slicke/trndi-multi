@@ -143,9 +143,12 @@ begin
   Canvas.TextOut(x, y, s);
 end;
 
-// The last hours as a line, scaled so the hard limits always fit: a reading
-// pinned to the top or bottom edge then means "off the chart", not "the
-// highest we saw". The limits themselves are drawn as thin lines.
+// The last hours as a line on a fixed axis — the window ends at now on every
+// tile, so a line that stops short of the right edge is a sensor that has
+// gone quiet, and two tiles can be compared by eye. Scaled so the hard
+// limits always fit: a reading pinned to the top or bottom edge then means
+// "off the chart", not "the highest we saw". The limits themselves are
+// drawn as thin lines.
 procedure TAccountTile.DrawSpark(const r: TRect; bg: TColor);
 var
   api: TrndiAPI;
@@ -153,6 +156,7 @@ var
   i, n, x, y, w, h: integer;
   pts: array of TPoint;
   line: TColor;
+  t0, t1: TDateTime;
 
   function YOf(val: double): integer;
   begin
@@ -196,12 +200,14 @@ begin
 
   // Time on the x axis rather than reading index, so a gap in the data
   // shows as a gap in the line's slope rather than being closed up.
+  t1 := Now;
+  t0 := IncMinute(t1, -HISTORY_MINUTES);
   SetLength(pts, n);
   for i := 0 to n - 1 do
   begin
-    x := r.Left + Round((FState.history[i].date - FState.history[0].date) /
-      Max(1 / MinsPerDay, FState.history[n - 1].date - FState.history[0].date) * w);
-    pts[i] := Point(x, YOf(FState.history[i].convert(mgdl)));
+    x := r.Left + Round((FState.history[i].date - t0) / (t1 - t0) * w);
+    pts[i] := Point(EnsureRange(x, r.Left, r.Right),
+      YOf(FState.history[i].convert(mgdl)));
   end;
   Canvas.Pen.Color := Mix(bg, clWhite, 0.9);
   Canvas.Pen.Width := Max(2, h div 25);

@@ -58,9 +58,8 @@ uses
 Classes, SysUtils, DateUtils, Math, trndi.api, trndi.types, trndimulti.accounts;
 
 const
-  {** Sparkline window: the last three hours, at most one reading a minute. }
+  {** Sparkline window: the last three hours. }
   HISTORY_MINUTES = 180;
-  HISTORY_MAX = 180;
   {** Polling never runs faster than one request a minute nor slower than
       one a quarter hour, whatever the backend reports as its interval. }
   POLL_MIN_MINUTES = 1;
@@ -202,16 +201,19 @@ begin
   inherited Destroy;
 end;
 
-// Placeholder readings (BG_NO_VAL) out of the history, and what is left
-// sorted ascending by time so the sparkline can walk it left to right.
-procedure TidyHistory(var res: BGResults);
+// Placeholder readings (BG_NO_VAL) and anything older than the window out
+// of the history, and what is left sorted ascending by time so the
+// sparkline can walk it left to right. The window is cut here rather than
+// trusted from the request: Nightscout honours only the count, Dexcom Share
+// only the minutes, so what comes back spans different times per backend.
+procedure TidyHistory(var res: BGResults; const cutoff: TDateTime);
 var
   i, j, w: integer;
   tmp: BGReading;
 begin
   w := 0;
   for i := 0 to High(res) do
-    if not res[i].empty then
+    if (not res[i].empty) and (res[i].date >= cutoff) then
     begin
       if w <> i then
         res[w] := res[i];
@@ -260,8 +262,11 @@ begin
         FHave := api.getLast(FCurrent) and (not FCurrent.empty);
         FStale := FHave;
       end;
-      FHistory := api.getReadings(HISTORY_MINUTES, HISTORY_MAX);
-      TidyHistory(FHistory);
+      // Count from the backend's own cadence, with slack for uploads that
+      // bunch up, so a count-only backend returns about the window too.
+      FHistory := api.getReadings(HISTORY_MINUTES,
+        HISTORY_MINUTES div Max(1, api.getReportingInterval) + 16);
+      TidyHistory(FHistory, IncMinute(Now, -HISTORY_MINUTES));
       if (not FHave) and (Length(FHistory) = 0) then
         FErr := api.errormsg;
     end;

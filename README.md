@@ -17,6 +17,7 @@ It is built on the very same API and settings layer as Trndi (vendored as a subm
 - **Each account polls on its own.** Every account is fetched on its own thread, one request per reporting interval, timed to land just after the next reading is due. A slow login on one account never holds up the others.
 - **Colours mean the same as in Trndi.** Green in range, red-orange above the high limit, red below the low one; where the account has a personal target band inside those limits, amber and blue for the room between. The thresholds are the account's own, applied exactly as Trndi applies them.
 - **Old readings look old.** A reading the backend could only serve as a fallback, or one that has aged past two reporting intervals, dims the tile and marks the footer `stale`. The footer always shows the reading's time and age.
+- **Rotated tokens are saved.** CareLink swaps its refresh token on every refresh and revokes the old one. trndi-multi writes the new one back to the account's settings the same way Trndi does, so neither program is left with a dead token at its next start.
 - **No data says why.** An account that cannot connect shows the backend's error on its tile; the others carry on.
 
 ## Keys

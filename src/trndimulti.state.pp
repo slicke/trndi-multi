@@ -95,6 +95,10 @@ type
     function IntervalMinutes: integer;
     {** Age of the current reading in whole minutes; -1 without one. }
     function AgeMinutes: integer;
+    {** Hooked to the backend's OnCredentialsChanged: persists a rotated
+        credential (see @link(StoreCredentials)) and keeps the in-memory
+        copy current for any later reconnect. Runs on the fetch thread. }
+    procedure CredentialsChanged(const newCreds: string);
     {** True when the reading should be shown as old: the backend served it
         as a fallback (@link(stale)), or it has aged past two reporting
         intervals with some slack — the point at which a CGM app would
@@ -175,6 +179,14 @@ begin
     Result := -1;
 end;
 
+procedure TAccountState.CredentialsChanged(const newCreds: string);
+begin
+  if newCreds = info.creds then
+    exit;
+  info.creds := newCreds;
+  StoreCredentials(info, newCreds);
+end;
+
 function TAccountState.IsStale: boolean;
 begin
   Result := haveCurrent and (stale or
@@ -252,7 +264,13 @@ begin
     else
     begin
       if api = nil then
+      begin
         api := FApi;
+        // Backends whose tokens rotate (CareLink) hand the new credential
+        // back through this; it has to reach the settings store or the
+        // next start logs in with a token the service already revoked.
+        api.OnCredentialsChanged := @FState.CredentialsChanged;
+      end;
       // A backend that answers with a placeholder has not answered: `empty`
       // is BG_NO_VAL. Treat it as no reading and fall back to the last one
       // the backend has, flagged stale, the way trndi-cli does.

@@ -110,6 +110,14 @@ function ListAccounts: TAccountList;
     else "Default". }
 function AccountLabel(const a: TAccountInfo): string;
 
+{** Write a rotated credential back to the account's remote.creds, so the
+    next start (of this program or of Trndi, which reads the same key) logs
+    in with the token the backend currently accepts. CareLink rotates its
+    refresh token on every refresh and invalidates the old one, so a blob
+    that is not written back is dead by the next restart. Safe to call from
+    a fetch thread: writes are serialised. }
+procedure StoreCredentials(const a: TAccountInfo; const creds: string);
+
 {** Build and connect the account's backend, then lay the user's thresholds
     on top of what it reported, exactly as the GUI does. False leaves the
     reason in @param(err) and @param(api) nil. Synchronous: call it off the
@@ -123,7 +131,12 @@ uses
 {$IFDEF WINDOWS}
 registry, Windows,
 {$ENDIF}
-trndi.types;
+SyncObjs, trndi.types;
+
+var
+  // Two accounts can rotate at the same moment on two fetch threads, and the
+  // INI store rewrites the whole file on every write.
+  storeLock: TCriticalSection;
 
 const
   // initCGMCore's untouched default high limit: a backend that reports no
@@ -260,6 +273,24 @@ begin
     Result := 'Default';
 end;
 
+procedure StoreCredentials(const a: TAccountInfo; const creds: string);
+var
+  native: TMultiNative;
+begin
+  storeLock.Acquire;
+  try
+    native := TMultiNative.Create;
+    try
+      native.configUser := a.name;
+      native.SetSetting('remote.creds', creds);
+    finally
+      native.Free;
+    end;
+  finally
+    storeLock.Release;
+  end;
+end;
+
 function OpenBackend(const a: TAccountInfo; out api: TrndiAPI;
 out err: string): boolean;
 begin
@@ -299,5 +330,11 @@ begin
     api.cgmRangeHi := a.ovrRangeHi;
   Result := true;
 end;
+
+initialization
+  storeLock := TCriticalSection.Create;
+
+finalization
+  storeLock.Free;
 
 end.

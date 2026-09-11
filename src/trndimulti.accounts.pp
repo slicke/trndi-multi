@@ -77,16 +77,17 @@ type
   TAccountList = array of TAccountInfo;
 
   {** The console native resolves its INI to GetAppConfigDir + trndi.ini, but
-      the GUI stores settings elsewhere: on Linux and macOS via
-      GetAppConfigFile (~/.config/Trndi.cfg), on Windows in the registry.
-      Read the GUI's store on both, the way trndi-cli does, so a configured
-      Trndi is all the setup this program needs. @link(TrndiAppName) makes
-      ApplicationName = 'Trndi' regardless of this binary's file name. }
+      the GUI stores settings elsewhere: on Linux and BSD via
+      GetAppConfigFile (~/.config/Trndi.cfg), on Windows in the registry,
+      on macOS in the app's preferences domain (NSUserDefaults). Read the
+      GUI's store on each, so a configured Trndi is all the setup this
+      program needs. @link(TrndiAppName) makes ApplicationName = 'Trndi'
+      regardless of this binary's file name. }
   TMultiNative = class(TTrndiNativeConsole)
   protected
     function ResolveIniPath: string; override;
   public
-{$IFDEF WINDOWS}
+{$IF DEFINED(WINDOWS) OR DEFINED(DARWIN)}
     function GetSetting(const keyname: string; def: string = '';
       global: boolean = false): string; override;
     procedure SetSetting(const keyname: string; const val: string;
@@ -128,8 +129,10 @@ function OpenBackend(const a: TAccountInfo; out api: TrndiAPI;
 implementation
 
 uses
-{$IFDEF WINDOWS}
+{$IF DEFINED(WINDOWS)}
 registry, Windows,
+{$ELSEIF DEFINED(DARWIN)}
+MacOSAll,
 {$ENDIF}
 SyncObjs, trndi.types;
 
@@ -193,10 +196,87 @@ begin
 end;
 {$ENDIF}
 
+{$IFDEF DARWIN}
+// The macOS GUI keeps settings in NSUserDefaults under its bundle
+// identifier, i.e. ~/Library/Preferences/com.slicke.Trndi.plist. Read and
+// write that domain through CFPreferences: the same store, the same keys
+// (buildKey applies the account prefix), no Cocoa runtime needed. Keys and
+// values are UTF-8 strings, as Trndi's own native writes them.
+const
+  MAC_PREFS_DOMAIN = 'com.slicke.Trndi';
+
+function CFStr(const s: string): CFStringRef;
+begin
+  Result := CFStringCreateWithCString(nil, PChar(s), kCFStringEncodingUTF8);
+end;
+
+function CFToStr(ref: CFStringRef): string;
+var
+  size: CFIndex;
+  buf: array of char;
+begin
+  Result := '';
+  if ref = nil then
+    exit;
+  size := CFStringGetMaximumSizeForEncoding(CFStringGetLength(ref),
+    kCFStringEncodingUTF8) + 1;
+  SetLength(buf, size);
+  if CFStringGetCString(ref, @buf[0], size, kCFStringEncodingUTF8) then
+    Result := PChar(@buf[0]);
+end;
+
+function TMultiNative.GetSetting(const keyname: string; def: string;
+global: boolean): string;
+var
+  key, domain: CFStringRef;
+  val: CFPropertyListRef;
+begin
+  Result := def;
+  key := CFStr(buildKey(keyname, global));
+  domain := CFStr(MAC_PREFS_DOMAIN);
+  try
+    val := CFPreferencesCopyAppValue(key, domain);
+    if val <> nil then
+      try
+        if CFGetTypeID(val) = CFStringGetTypeID() then
+          Result := CFToStr(CFStringRef(val));
+      finally
+        CFRelease(val);
+      end;
+  finally
+    CFRelease(key);
+    CFRelease(domain);
+  end;
+  // An empty stored value reads as the default, as Trndi's native does.
+  if Result = '' then
+    Result := def;
+end;
+
+procedure TMultiNative.SetSetting(const keyname: string; const val: string;
+global: boolean);
+var
+  key, domain, value: CFStringRef;
+begin
+  key := CFStr(buildKey(keyname, global));
+  domain := CFStr(MAC_PREFS_DOMAIN);
+  value := CFStr(val);
+  try
+    CFPreferencesSetAppValue(key, CFPropertyListRef(value), domain);
+    CFPreferencesAppSynchronize(domain);
+  finally
+    CFRelease(value);
+    CFRelease(key);
+    CFRelease(domain);
+  end;
+end;
+{$ENDIF}
+
 function SettingsLocation: string;
 begin
-{$IFDEF WINDOWS}
+{$IF DEFINED(WINDOWS)}
   Result := 'HKCU\SOFTWARE\Trndi';
+{$ELSEIF DEFINED(DARWIN)}
+  Result := '~/Library/Preferences/' + MAC_PREFS_DOMAIN + '.plist';
 {$ELSE}
   Result := GetAppConfigFile(false);
 {$ENDIF}

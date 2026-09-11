@@ -1,0 +1,225 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One job per platform, each ending in an artifact named after the platform;
+# publish then turns every push to main that built green into a rolling
+# build-<N> release, as trndi-cli does. The Lazarus toolchain comes from the
+# same places as Trndi's own CI: the pinned SourceForge .debs through the
+# vendored setup-lazarus action on Linux, the Lazarus installer on Windows
+# and MacPorts on macOS.
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            # Preview image: libqt6pas6/-dev only entered the Ubuntu archive
+            # in 25.10, so ubuntu-latest (24.04) cannot build the Qt6 LCL.
+            runner: ubuntu-26.04
+            # No toolchain URLs: amd64 inherits the pin owned by the
+            # vendored setup-lazarus action.
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+            fpc_laz_url: "https://sourceforge.net/projects/lazarus/files/Lazarus%20Linux%20arm64%20DEB/Lazarus%204.8/fpc-laz_3.2.3-240813_arm64.deb/download"
+            fpc_src_url: "https://sourceforge.net/projects/lazarus/files/Lazarus%20Linux%20arm64%20DEB/Lazarus%204.8/fpc-src_3.2.3-240813_arm64.deb/download"
+            laz_url: "https://sourceforge.net/projects/lazarus/files/Lazarus%20Linux%20arm64%20DEB/Lazarus%204.8/lazarus-project_4.8.0-0_arm64.deb/download"
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # The submodule carries Trndi's composite action, so the toolchain pin
+      # is Trndi's and moves when the submodule does.
+      - name: Install Lazarus/FPC toolchain
+        uses: ./vendor/trndi/.github/actions/setup-lazarus
+        with:
+          fpc_laz_url: ${{ matrix.fpc_laz_url }}
+          fpc_src_url: ${{ matrix.fpc_src_url }}
+          laz_url: ${{ matrix.laz_url }}
+
+      - name: Build
+        run: make
+
+      # A GUI app has no --help to call, but it can run headless on Qt's
+      # offscreen platform: with no settings it must come up on the "no
+      # accounts" screen and stay up, so the timeout expiring (124) is the
+      # pass and any other exit means it crashed at start.
+      - name: Smoke test
+        run: |
+          set +e
+          QT_QPA_PLATFORM=offscreen timeout 10 ./bin/trndi-multi
+          code=$?
+          set -e
+          test "$code" -eq 124
+
+      - name: Stage binary
+        run: cp bin/trndi-multi trndi-multi-linux-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trndi-multi-linux-${{ matrix.arch }}
+          path: trndi-multi-linux-${{ matrix.arch }}
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Same installer Trndi's CI uses; it puts lazbuild at C:\Lazarus, which
+      # make.ps1 already looks for. curl.exe rather than the Invoke-WebRequest
+      # alias because SourceForge content-negotiates on User-Agent; the MZ
+      # check makes a mirror that answers with an HTML page fail here rather
+      # than at install.
+      - name: Install Lazarus
+        shell: pwsh
+        run: |
+          curl.exe -L --fail --retry 5 --retry-delay 5 --retry-all-errors -o lazarus.exe "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%204.8/lazarus-4.8-fpc-3.2.2-win64.exe/download"
+          $fs = [System.IO.File]::OpenRead('lazarus.exe')
+          $mz = New-Object byte[] 2
+          $null = $fs.Read($mz, 0, 2)
+          $fs.Close()
+          if (($mz[0] -ne 0x4D) -or ($mz[1] -ne 0x5A)) {
+            throw 'lazarus.exe is not a Windows executable - the mirror likely returned a web page.'
+          }
+          Start-Process '.\lazarus.exe' -ArgumentList '/VERYSILENT','/SP-','/NORESTART','/DIR=C:\Lazarus' -Wait
+
+      - name: Build
+        shell: pwsh
+        run: .\make.ps1
+
+      # The exe imports libcurl.dll at load time (the console native's HTTP
+      # transport). Ship it in the zip so the download runs as it is: the
+      # official curl-for-Windows package names it libcurl-x64.dll, the
+      # import table wants libcurl.dll. Its licence text rides along.
+      - name: Package with libcurl
+        shell: pwsh
+        run: |
+          curl.exe -L --fail --retry 5 --retry-delay 5 --retry-all-errors -o curlpkg.zip 'https://curl.se/windows/latest.cgi?p=win64-mingw.zip'
+          Expand-Archive curlpkg.zip -DestinationPath curlpkg
+          $dll = Get-ChildItem curlpkg -Recurse -Filter libcurl-x64.dll | Select-Object -First 1
+          if (-not $dll) { throw 'libcurl-x64.dll not found in curl package' }
+          New-Item -ItemType Directory pkg | Out-Null
+          Copy-Item bin\trndi-multi.exe pkg\
+          Copy-Item $dll.FullName pkg\libcurl.dll
+          $lic = Get-ChildItem curlpkg -Recurse -Filter COPYING.txt | Select-Object -First 1
+          if ($lic) { Copy-Item $lic.FullName pkg\COPYING-curl.txt }
+          Copy-Item LICENSE pkg\LICENSE.txt
+          Compress-Archive -Path pkg\* -DestinationPath trndi-multi-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trndi-multi-windows-x64
+          path: trndi-multi-windows-x64.zip
+
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # MacPorts builds fpc and lazarus from source, which is what makes this
+      # the slowest leg; it is also the route Trndi's own macOS build takes.
+      - name: Install MacPorts, FPC and Lazarus
+        run: |
+          set -euo pipefail
+          OSMAJOR="$(sw_vers -productVersion | cut -d. -f1)"
+          case "$OSMAJOR" in
+            14) OSNAME="14-Sonoma" ;;
+            15) OSNAME="15-Sequoia" ;;
+            *) echo "Unsupported macOS version: ${OSMAJOR}" >&2; exit 1 ;;
+          esac
+          CURL_RETRY="--retry 5 --retry-delay 5 --retry-all-errors"
+          PKG_URL="$(curl -fsSL $CURL_RETRY https://www.macports.org/install.php | grep -Eo "https://[^\"[:space:]]*MacPorts-[0-9.]+-${OSNAME}\.pkg" | head -n1 || true)"
+          [ -n "$PKG_URL" ] || { echo "Failed to resolve MacPorts pkg URL" >&2; exit 1; }
+          curl -fsSL $CURL_RETRY -o MacPorts.pkg "$PKG_URL"
+          sudo installer -pkg MacPorts.pkg -target /
+          export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
+          sudo port -v selfupdate
+          sudo port -N install fpc lazarus gmake
+
+      # A bare Cocoa binary has no bundle to be activated through, so the
+      # window never comes to the front; wrap it in the smallest .app that
+      # Finder and `open` accept.
+      - name: Build and bundle
+        run: |
+          set -euo pipefail
+          export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
+          gmake
+          APP="trndi-multi.app"
+          mkdir -p "$APP/Contents/MacOS"
+          cp bin/trndi-multi "$APP/Contents/MacOS/trndi-multi"
+          cat > "$APP/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Trndi Multi</string>
+            <key>CFBundleDisplayName</key><string>Trndi Multi</string>
+            <key>CFBundleIdentifier</key><string>com.slicke.trndi-multi</string>
+            <key>CFBundleExecutable</key><string>trndi-multi</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+          </dict>
+          </plist>
+          PLIST
+          # ditto keeps the bundle's permissions and structure, unlike zip -r
+          # on a runner without the Finder metadata.
+          ditto -c -k --keepParent "$APP" trndi-multi-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trndi-multi-macos-arm64
+          path: trndi-multi-macos-arm64.zip
+
+  # ===================== RELEASE =====================
+  # Rolling releases as trndi-cli does them: every push to main that builds
+  # green on every platform becomes tag build-<N> (from 100) with the
+  # artifacts as release assets. The site's download links point at
+  # releases/latest/download/<asset>, so the asset names above are an API.
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    # Two quick pushes must not race the same build number.
+    concurrency: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history *and* tags, for the build counter
+
+      - name: Next build number
+        id: ver
+        run: |
+          LATEST=$(git tag | grep -E '^build-[0-9]+$' | sed 's/^build-//' | sort -n | tail -1)
+          echo "num=$(( ${LATEST:-99} + 1 ))" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NUM=${{ steps.ver.outputs.num }}
+          # No --target: tag whatever main's HEAD is at publish time, as
+          # trndi-cli does; targeting $GITHUB_SHA 403s once a newer push
+          # has landed.
+          gh release create "build-${NUM}" \
+            --title "Build ${NUM}" \
+            --notes "Automated build of ${GITHUB_SHA}. Accounts come from Trndi's settings — see README.md. Linux needs libQt6Pas (libqt6pas6 / qt6pas) and libcurl installed; the Windows zip ships libcurl.dll." \
+            dist/*/*

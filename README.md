@@ -1,3 +1,5 @@
+[![Build](https://github.com/slicke/trndi-multi/actions/workflows/build.yml/badge.svg)](https://github.com/slicke/trndi-multi/actions/workflows/build.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 # trndi-multi - every Trndi account in one window
 
 ## A wall display for households and caregivers who follow more than one person
@@ -27,6 +29,16 @@ It is built on the very same API and settings layer as Trndi (vendored as a subm
 | `Q` | Quit |
 
 The grid refills the window on resize and picks the column count that gives the biggest tiles, so two accounts sit side by side in a wide window and one above the other in a tall one.
+
+## Downloads
+
+Every push to `main` that builds green on all platforms becomes a rolling `build-N` release on the [releases page](https://github.com/slicke/trndi-multi/releases), with:
+
+| Asset | Notes |
+|-------|-------|
+| `trndi-multi-linux-amd64`, `trndi-multi-linux-arm64` | Needs the Qt6 LCL bindings (`libqt6pas6` on Debian/Ubuntu, `qt6pas` on Fedora) and libcurl installed. `chmod +x` and run. |
+| `trndi-multi-windows-x64.zip` | The exe with `libcurl.dll` beside it. Unzip and run. |
+| `trndi-multi-macos-arm64.zip` | An unsigned `.app` for Apple Silicon; right-click, Open the first time. |
 
 ## Building
 

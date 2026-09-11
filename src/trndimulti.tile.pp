@@ -218,7 +218,7 @@ end;
 procedure TAccountTile.Paint;
 var
   r: TRect;
-  h, w, pad, stripe, x, y, vh, ah, valW, arrowW, age: integer;
+  h, w, pad, x, y, vh, ah, valW, arrowW, age: integer;
   scale: double;
   bg: TColor;
   s, arrow, footer: string;
@@ -243,16 +243,6 @@ begin
   if FState = nil then
     exit;
 
-  // The account's own colour as a stripe along the top: the same colour
-  // Trndi paints that account's window with.
-  stripe := 0;
-  if AccountHasColor(FState.info) then
-  begin
-    stripe := Max(4, h div 28);
-    Canvas.Brush.Color := TColor(FState.info.color);
-    Canvas.FillRect(Rect(r.Left, r.Top, r.Right, r.Top + stripe));
-  end;
-
   Canvas.Brush.Style := bsClear;
   Canvas.Font.Color := clWhite;
   Canvas.Font.Quality := fqCleartype;
@@ -260,7 +250,7 @@ begin
   // Header: who this is.
   Canvas.Font.Style := [fsBold];
   Canvas.Font.Height := -Max(11, h div 11);
-  y := r.Top + stripe + pad;
+  y := r.Top + pad;
   DrawText(r.Left + pad, y, AccountLabel(FState.info), taLeftJustify);
 
   if FState.haveCurrent then

@@ -63,7 +63,6 @@ type
   TAccountInfo = record
     name: string;          //< Stored spelling; '' is the default account
     nick: string;          //< user.nick, may be empty
-    color: longint;        //< user.color as a TColor value; 0 (black) is "none"
     backend: string;       //< remote.type code, '' when unconfigured
     target: string;        //< Site URL, account name or e-mail
     creds: string;         //< Secret, token or password
@@ -110,10 +109,6 @@ function ListAccounts: TAccountList;
 {** What to call the account on screen: the nickname, else the account name,
     else "Default". }
 function AccountLabel(const a: TAccountInfo): string;
-
-{** True when the account has a colour of its own (Trndi stores black for
-    "none"). }
-function AccountHasColor(const a: TAccountInfo): boolean;
 
 {** Build and connect the account's backend, then lay the user's thresholds
     on top of what it reported, exactly as the GUI does. False leaves the
@@ -202,7 +197,6 @@ begin
   Result := Default(TAccountInfo);
   Result.name := name;
   Result.nick := Trim(native.GetSetting('user.nick', ''));
-  Result.color := native.GetColorSetting('user.color', 0);
   Result.backend := Trim(native.GetSetting('remote.type'));
   Result.target := native.GetSetting('remote.target');
   Result.creds := native.GetSetting('remote.creds');
@@ -264,11 +258,6 @@ begin
     Result := a.name
   else
     Result := 'Default';
-end;
-
-function AccountHasColor(const a: TAccountInfo): boolean;
-begin
-  Result := a.color <> 0;
 end;
 
 function OpenBackend(const a: TAccountInfo; out api: TrndiAPI;

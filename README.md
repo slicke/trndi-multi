@@ -12,7 +12,7 @@ It is built on the very same API and settings layer as Trndi (vendored as a subm
 
 ## How it works
 
-- **Accounts come from Trndi.** Set them up in Trndi's settings window (the "Multi User" tab, see [Trndi's multi-user guide](https://github.com/slicke/trndi/blob/main/guides/Multiuser.md)). trndi-multi reads the same settings store and shows every account that has a backend configured, the default account first. Nicknames and account colours carry over: the colour becomes the stripe along the top of the tile. There is nothing to configure here; to add, rename or remove an account, use Trndi.
+- **Accounts come from Trndi.** Set them up in Trndi's settings window (the "Multi User" tab, see [Trndi's multi-user guide](https://github.com/slicke/trndi/blob/main/guides/Multiuser.md)). trndi-multi reads the same settings store and shows every account that has a backend configured, the default account first. Nicknames carry over as the tile titles. There is nothing to configure here; to add, rename or remove an account, use Trndi.
 - **One unit for the wall.** Accounts can use mmol/L and mg/dL side by side in Trndi. Here everything is shown in the first account's unit, so the wall reads as one thing.
 - **Each account polls on its own.** Every account is fetched on its own thread, one request per reporting interval, timed to land just after the next reading is due. A slow login on one account never holds up the others.
 - **Colours mean the same as in Trndi.** Green in range, red-orange above the high limit, red below the low one; where the account has a personal target band inside those limits, amber and blue for the room between. The thresholds are the account's own, applied exactly as Trndi applies them.

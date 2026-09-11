@@ -29,6 +29,7 @@
             <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc"/>
             <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
+          <Conditionals Value="if TargetOS=&apos;darwin&apos; then CustomOptions += &apos; -k-lcurl&apos;;"/>
           <Parsing>
             <SyntaxOptions>
               <IncludeAssertionCode Value="True"/>
@@ -106,6 +107,7 @@
       <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
+    <Conditionals Value="if TargetOS=&apos;darwin&apos; then CustomOptions += &apos; -k-lcurl&apos;;"/>
     <CodeGeneration>
       <SmartLinkUnit Value="True"/>
       <Optimizations>

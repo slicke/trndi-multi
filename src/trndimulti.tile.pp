@@ -131,7 +131,7 @@ var
   word: string;
 begin
   Result := 0;
-  words := text.Split([' ', LineEnding, #10, #13]);
+  words := text.Split([' ', #10, #13]);
   for word in words do
     Result := Max(Result, cv.TextWidth(word));
 end;
@@ -215,6 +215,7 @@ begin
   // shows as a gap in the line's slope rather than being closed up.
   t1 := Now;
   t0 := IncMinute(t1, -HISTORY_MINUTES);
+  pts := nil;
   SetLength(pts, n);
   for i := 0 to n - 1 do
   begin

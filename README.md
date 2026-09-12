@@ -10,9 +10,21 @@ trndi-multi is a companion to the [Trndi](https://github.com/slicke/trndi) deskt
 
 It is built on the very same API and settings layer as Trndi (vendored as a submodule), so it supports the same backends - _Nightscout - Dexcom - FreeStyle Libre - Tandem Source - CareLink - xDrip_ - and needs **no configuration of its own**.
 
+## Setting up accounts
+
+trndi-multi has no settings of its own. Accounts are created and configured in Trndi, and each one needs its own backend before it gets a tile. The full walkthrough is in [Trndi's multi-user guide](https://github.com/slicke/trndi/blob/main/guides/Multiuser.md); the short version:
+
+1. **Start Trndi** and open its settings (right-click the window).
+2. **Add the accounts.** On the _Accounts_ page (under _App & system_ in the sidebar) click _+ Add_ and enter a name for each person. Give them a nickname and colour if you like: the nickname becomes the tile title. Close the window and save.
+3. **Restart Trndi.** Now that more than one account exists, it asks which one to use at start-up. Pick one of the new accounts.
+4. **Configure that account's backend** in settings (Nightscout, Dexcom, and so on), as you would for a single-user Trndi. Save and close.
+5. **Repeat steps 3 and 4** for every account. Each account has its own backend, thresholds and unit; an account without a backend is skipped by trndi-multi.
+6. **Start trndi-multi.** It reads the same settings store and shows one tile per configured account, the default account first.
+
+To add, rename or remove an account later, do it in Trndi and restart trndi-multi.
+
 ## How it works
 
-- **Accounts come from Trndi.** Set them up in Trndi's settings window (the "Multi User" tab, see [Trndi's multi-user guide](https://github.com/slicke/trndi/blob/main/guides/Multiuser.md)). trndi-multi reads the same settings store and shows every account that has a backend configured, the default account first. Nicknames carry over as the tile titles. There is nothing to configure here; to add, rename or remove an account, use Trndi.
 - **One unit for the wall.** Accounts can use mmol/L and mg/dL side by side in Trndi. Here everything is shown in the first account's unit, so the wall reads as one thing.
 - **Each account polls on its own.** Every account is fetched on its own thread, one request per reporting interval, timed to land just after the next reading is due. A slow login on one account never holds up the others.
 - **Colours mean the same as in Trndi.** Green in range, red-orange above the high limit, red below the low one; where the account has a personal target band inside those limits, amber and blue for the room between. The thresholds are the account's own, applied exactly as Trndi applies them.

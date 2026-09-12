@@ -8,11 +8,15 @@ trndi-multi is a companion to the [Trndi](https://github.com/slicke/trndi) deskt
 
 ![Six accounts as tiles: green in range, blue below the low limit, red-orange above the high one; two of them dimmed and marked stale](doc/img/multi.png)
 
-It is built on the very same API and settings layer as Trndi (vendored as a submodule), so it supports the same backends - _Nightscout - Dexcom - FreeStyle Libre - Tandem Source - CareLink - xDrip_ - and needs **no configuration of its own**.
+It is built on the very same API and settings layer as Trndi (vendored as a submodule), so it supports the same backends - _Nightscout - Dexcom - FreeStyle Libre - Tandem Source - CareLink - xDrip_ - and shares Trndi's accounts: **a Trndi already set up needs no configuration at all**, and accounts added here are Trndi accounts too.
 
 ## Setting up accounts
 
-trndi-multi has no settings of its own. Accounts are created and configured in Trndi, and each one needs its own backend before it gets a tile. The full walkthrough is in [Trndi's multi-user guide](https://github.com/slicke/trndi/blob/main/guides/Multiuser.md); the short version:
+Accounts live in Trndi's settings store, and each one needs a backend before it gets a tile. Set them up in whichever program is handier:
+
+**In trndi-multi:** right-click the window and choose _Accounts_. Every account is a tab with the few things a tile needs: a nickname (the tile title), the system (Nightscout, Dexcom, and so on), its user and password, and the unit. The _+_ tab adds an account; it asks for the account name once, and that name cannot be changed afterwards (it is the key everything else is stored under, and Trndi cannot rename it either). _Remove account_ takes an account off the wall and, if you say so, erases its settings; kept settings come back when an account with the same name is added again. Nothing is written until _Save_, after which the tiles reload. CareLink takes the token data captured in a browser rather than a password, as described in Trndi's CareLink guide; that step is easier in Trndi.
+
+**In Trndi:** the full walkthrough is in [Trndi's multi-user guide](https://github.com/slicke/trndi/blob/main/guides/Multiuser.md); the short version:
 
 1. **Start Trndi** and open its settings (right-click the window).
 2. **Add the accounts.** On the _Accounts_ page (under _App & system_ in the sidebar) click _+ Add_ and enter a name for each person. Give them a nickname and colour if you like: the nickname becomes the tile title. Close the window and save.
@@ -21,7 +25,7 @@ trndi-multi has no settings of its own. Accounts are created and configured in T
 5. **Repeat steps 3 and 4** for every account. Each account has its own backend, thresholds and unit; an account without a backend is skipped by trndi-multi.
 6. **Start trndi-multi.** It reads the same settings store and shows one tile per configured account, the default account first.
 
-To add, rename or remove an account later, do it in Trndi and restart trndi-multi.
+Changes made in Trndi show up in trndi-multi at its next start. Both programs rewrite the account list when they save, so do not have both settings windows open at once: whichever saves last wins.
 
 ## How it works
 
@@ -40,6 +44,7 @@ To add, rename or remove an account later, do it in Trndi and restart trndi-mult
 | `F11` | Toggle full screen |
 | `Esc` | Leave full screen (not in kiosk mode) |
 | `Q` | Quit |
+| Right-click | Menu: _Accounts_, refresh, full screen, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
 
 | Flag | Effect |
 |------|--------|
@@ -80,7 +85,7 @@ The debug build knows Trndi's synthetic `API_D_*` backends, which is how the scr
 
 ## Not (yet) here
 
-Deliberately out of scope for now: editing accounts (Trndi does that), per-account language and unit, alarms and sounds, JavaScript extensions and the Web API. Trndi itself has all of those.
+Deliberately out of scope for now: account colours and thresholds (Trndi sets those, and the tiles honour them), per-account language, alarms and sounds, JavaScript extensions and the Web API. Trndi itself has all of those.
 
 ## Disclaimer
 

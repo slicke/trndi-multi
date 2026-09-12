@@ -42,7 +42,8 @@
   refills the window on resize, polled on each account's own schedule.
 
   Keys: F5 refetches every account, F11 toggles full screen, Escape leaves
-  it, Q quits.
+  it, Q quits. Right-click opens a menu with the accounts window and the
+  same actions; a kiosk has no menu, its passwords are not one click away.
 
   Full screen adds a clock strip above the tiles: a wall display has no
   panel or taskbar to tell the time.
@@ -54,9 +55,10 @@ unit umulti;
 interface
 
 uses
-Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, LCLType,
-Math, DateUtils, trndi.types, trndimulti.accounts, trndimulti.state,
-trndimulti.tile, trndimulti.kiosk, trndimulti.clock;
+Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus,
+LCLType, Math, DateUtils, trndi.types, trndimulti.accounts,
+trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
+trndimulti.settings;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -76,7 +78,14 @@ type
     FStartFullscreen: boolean;
     FSnapshotTimer: TTimer;
     FClock: TClockBar;
+    FMenu: TPopupMenu;
+    procedure BuildMenu;
     procedure LoadAccounts;
+    procedure ClearAccounts;
+    procedure MenuAccounts(Sender: TObject);
+    procedure MenuRefresh(Sender: TObject);
+    procedure MenuFullscreen(Sender: TObject);
+    procedure MenuQuit(Sender: TObject);
     procedure SnapshotTick(Sender: TObject);
     procedure LayoutTiles;
     procedure TimerTick(Sender: TObject);
@@ -135,6 +144,8 @@ begin
   FClock.Color := Color;
   FClock.Visible := false;
 
+  if not FKiosk then
+    BuildMenu;
   LoadAccounts;
   LayoutTiles;
   FetchDue(true);
@@ -175,21 +186,88 @@ begin
 end;
 
 destructor TfMulti.Destroy;
-var
-  i: integer;
 begin
   FTimer.Enabled := false;
   if FKiosk then
     SetKeepAwake(false);
-  // Tiles first, so nothing paints a state that is being freed; the states
-  // then wait for any fetch still running.
-  for i := 0 to High(FTiles) do
-    FTiles[i].Free;
-  FTiles := nil;
-  for i := 0 to High(FStates) do
-    FStates[i].Free;
-  FStates := nil;
+  ClearAccounts;
   inherited Destroy;
+end;
+
+procedure TfMulti.BuildMenu;
+
+  function Item(const caption: string; handler: TNotifyEvent): TMenuItem;
+  begin
+    Result := TMenuItem.Create(FMenu);
+    Result.Caption := caption;
+    Result.OnClick := handler;
+    FMenu.Items.Add(Result);
+  end;
+
+begin
+  FMenu := TPopupMenu.Create(Self);
+  Item('Accounts...', @MenuAccounts);
+  Item('-', nil);
+  Item('Refresh now' + #9 + 'F5', @MenuRefresh);
+  Item('Full screen' + #9 + 'F11', @MenuFullscreen);
+  Item('-', nil);
+  Item('Quit' + #9 + 'Q', @MenuQuit);
+  PopupMenu := FMenu;
+end;
+
+// Tiles first, so nothing paints a state that is being freed; the states
+// then wait for any fetch still running. The arrays are taken away before
+// anything is freed: removing a tile from the form makes the LCL re-run
+// the layout, and a state's destructor services Synchronize while it
+// waits for its fetch, so LayoutTiles and FetchDone can both run in the
+// middle of this and must not find half-freed tiles.
+procedure TfMulti.ClearAccounts;
+var
+  tiles: array of TAccountTile;
+  states: array of TAccountState;
+  i: integer;
+begin
+  tiles := FTiles;
+  states := FStates;
+  FTiles := nil;
+  FStates := nil;
+  DisableAutoSizing;
+  try
+    for i := 0 to High(tiles) do
+      tiles[i].Free;
+    for i := 0 to High(states) do
+      states[i].Free;
+    FreeAndNil(FEmpty);
+  finally
+    EnableAutoSizing;
+  end;
+end;
+
+// Saved in the accounts window: start over from the store, as a restart
+// would, without the restart.
+procedure TfMulti.MenuAccounts(Sender: TObject);
+begin
+  if not EditAccounts(Self) then
+    exit;
+  ClearAccounts;
+  LoadAccounts;
+  LayoutTiles;
+  FetchDue(true);
+end;
+
+procedure TfMulti.MenuRefresh(Sender: TObject);
+begin
+  FetchDue(true);
+end;
+
+procedure TfMulti.MenuFullscreen(Sender: TObject);
+begin
+  SetFullscreen(WindowState <> wsFullScreen);
+end;
+
+procedure TfMulti.MenuQuit(Sender: TObject);
+begin
+  Close;
 end;
 
 // Every account with a backend gets a tile. The display unit is the first
@@ -216,6 +294,7 @@ begin
       FStates[n] := TAccountState.Create(a);
       FTiles[n] := TAccountTile.Create(Self);
       FTiles[n].Parent := Self;
+      FTiles[n].PopupMenu := FMenu;
       FTiles[n].State := FStates[n];
       FTiles[n].DisplayUnit := FUnit;
       Inc(n);
@@ -231,10 +310,17 @@ begin
     FEmpty.WordWrap := true;
     FEmpty.Font.Color := clWhite;
     FEmpty.Font.Height := -16;
-    FEmpty.Caption := 'No Trndi accounts found.' + LineEnding + LineEnding +
-      'Set up Trndi first: accounts and their backends are managed in its ' +
-      'settings window, and this program shows every account it finds there ('
-      + SettingsLocation + ').';
+    FEmpty.PopupMenu := FMenu;
+    FEmpty.Caption := 'No Trndi accounts set up.' + LineEnding + LineEnding;
+    if FKiosk then
+      FEmpty.Caption := FEmpty.Caption +
+        'Accounts and their backends are managed in Trndi''s settings ' +
+        'window, or in this program''s Accounts window outside kiosk mode; ' +
+        'they are read from ' + SettingsLocation + '.'
+    else
+      FEmpty.Caption := FEmpty.Caption +
+        'Right-click here and choose Accounts to add them, or set them up ' +
+        'in Trndi: both use the same settings (' + SettingsLocation + ').';
   end;
 end;
 

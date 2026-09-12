@@ -45,9 +45,9 @@
   macOS, HKCU\SOFTWARE\Trndi on Windows). With multi-user mode on, the
   account names sit in the root key users.names and every other key of an
   account carries a "Name_" prefix (trndi.native.base's buildKey); the default
-  account is the unprefixed keys. This unit only reads that store: accounts
-  are created, renamed and removed in Trndi's own settings window, and this
-  program shows whatever it finds there.
+  account is the unprefixed keys. This unit reads that store and, through
+  @link(SaveAccounts), writes it the same way Trndi's settings window does,
+  so accounts set up in either program show up in both.
 }
 unit trndimulti.accounts;
 
@@ -92,8 +92,25 @@ type
       global: boolean = false): string; override;
     procedure SetSetting(const keyname: string; const val: string;
       global: boolean = false); override; overload;
+    // The base class's WipeUserSettings walks ExportSettings and calls
+    // DeleteSetting on every key with the account's prefix; both must
+    // address the GUI's store too, or a removed account's keys would be
+    // looked for in the console INI.
+    procedure DeleteSetting(const keyname: string;
+      global: boolean = false); override;
+    function ExportSettings: string; override;
 {$ENDIF}
   end;
+
+  {** One account as the settings window hands it back. }
+  TAccountEdit = record
+    info: TAccountInfo;
+    // The credential box was typed in. A CareLink token rotates on every
+    // fetch, so an untouched box must not write its stale copy back over
+    // whatever a fetch thread stored meanwhile.
+    credsEdited: boolean;
+  end;
+  TAccountEditList = array of TAccountEdit;
 
 {** For OnGetApplicationName: the settings file is Trndi's, not ours. }
 function TrndiAppName: string;
@@ -107,9 +124,32 @@ function SettingsLocation: string;
     unconfigured account deserves a tile. }
 function ListAccounts: TAccountList;
 
+{** One account's stored settings by name ('' for the default account);
+    what @link(ListAccounts) would return for it. Used when a name is added
+    (back): a removed account keeps its keys unless erased, so the settings
+    come back with the name, as in Trndi. }
+function ReadStoredAccount(const name: string): TAccountInfo;
+
 {** What to call the account on screen: the nickname, else the account name,
     else "Default". }
 function AccountLabel(const a: TAccountInfo): string;
+
+{** Trndi's rule for an account name: letters, digits and spaces, not
+    blank. The name is the prefix on every key the account owns, which is
+    why it cannot be changed afterwards. False leaves the reason in
+    @param(why). }
+function AccountNameValid(const name: string; out why: string): boolean;
+
+{** Write the accounts back the way Trndi's settings window does: the
+    list of named accounts to users.names, then each account's nickname,
+    backend, target, credential and unit. @param(accounts) holds the
+    default account first (name ''); every other name goes into
+    users.names in the order given. Names in @param(erase) were removed
+    with "also erase its settings" and have every key with their prefix
+    deleted; a removed account not in it keeps its keys, so re-adding the
+    name restores it, as in Trndi. }
+procedure SaveAccounts(const accounts: TAccountEditList;
+  const erase: TStringArray);
 
 {** Write a rotated credential back to the account's remote.creds, so the
     next start (of this program or of Trndi, which reads the same key) logs
@@ -194,6 +234,51 @@ begin
     reg.Free;
   end;
 end;
+
+procedure TMultiNative.DeleteSetting(const keyname: string; global: boolean);
+var
+  reg: TRegistry;
+  key: string;
+begin
+  key := buildKey(keyname, global);
+  reg := TRegistry.Create;
+  try
+    reg.RootKey := HKEY_CURRENT_USER;
+    if reg.OpenKey('\SOFTWARE\Trndi\', false) then
+      if reg.ValueExists(key) then
+        reg.DeleteValue(key);
+  finally
+    reg.Free;
+  end;
+end;
+
+// key=value lines under a [trndi] header, the shape WipeUserSettings
+// parses (and Trndi's own registry native exports).
+function TMultiNative.ExportSettings: string;
+var
+  reg: TRegistry;
+  names, sl: TStringList;
+  i: integer;
+begin
+  sl := TStringList.Create;
+  names := TStringList.Create;
+  reg := TRegistry.Create;
+  try
+    reg.RootKey := HKEY_CURRENT_USER;
+    sl.Add('[trndi]');
+    if reg.OpenKeyReadOnly('\SOFTWARE\Trndi\') then
+    begin
+      reg.GetValueNames(names);
+      for i := 0 to names.Count - 1 do
+        sl.Add(names[i] + '=' + reg.ReadString(names[i]));
+    end;
+    Result := sl.Text;
+  finally
+    reg.Free;
+    names.Free;
+    sl.Free;
+  end;
+end;
 {$ENDIF}
 
 {$IFDEF DARWIN}
@@ -267,6 +352,65 @@ begin
     CFRelease(value);
     CFRelease(key);
     CFRelease(domain);
+  end;
+end;
+
+// A nil value removes the key from the domain.
+procedure TMultiNative.DeleteSetting(const keyname: string; global: boolean);
+var
+  key, domain: CFStringRef;
+begin
+  key := CFStr(buildKey(keyname, global));
+  domain := CFStr(MAC_PREFS_DOMAIN);
+  try
+    CFPreferencesSetAppValue(key, nil, domain);
+    CFPreferencesAppSynchronize(domain);
+  finally
+    CFRelease(key);
+    CFRelease(domain);
+  end;
+end;
+
+// Every string key in the domain as key=value lines under a [trndi]
+// header, the shape WipeUserSettings parses. Trndi's own native exports
+// the same from NSUserDefaults; here the domain is read directly, so no
+// Cocoa runtime and no NSGlobalDomain keys to filter out.
+function TMultiNative.ExportSettings: string;
+var
+  domain: CFStringRef;
+  keys: CFArrayRef;
+  val: CFPropertyListRef;
+  sl: TStringList;
+  i: CFIndex;
+  key: CFStringRef;
+begin
+  sl := TStringList.Create;
+  domain := CFStr(MAC_PREFS_DOMAIN);
+  try
+    sl.Add('[trndi]');
+    keys := CFPreferencesCopyKeyList(domain, kCFPreferencesCurrentUser,
+      kCFPreferencesAnyHost);
+    if keys <> nil then
+      try
+        for i := 0 to CFArrayGetCount(keys) - 1 do
+        begin
+          key := CFStringRef(CFArrayGetValueAtIndex(keys, i));
+          val := CFPreferencesCopyAppValue(key, domain);
+          if val <> nil then
+            try
+              if CFGetTypeID(val) = CFStringGetTypeID() then
+                sl.Add(CFToStr(key) + '=' + CFToStr(CFStringRef(val)));
+            finally
+              CFRelease(val);
+            end;
+        end;
+      finally
+        CFRelease(keys);
+      end;
+    Result := sl.Text;
+  finally
+    CFRelease(domain);
+    sl.Free;
   end;
 end;
 {$ENDIF}
@@ -343,6 +487,18 @@ begin
   end;
 end;
 
+function ReadStoredAccount(const name: string): TAccountInfo;
+var
+  native: TMultiNative;
+begin
+  native := TMultiNative.Create;
+  try
+    Result := ReadAccount(native, name);
+  finally
+    native.Free;
+  end;
+end;
+
 function AccountLabel(const a: TAccountInfo): string;
 begin
   if a.nick <> '' then
@@ -351,6 +507,88 @@ begin
     Result := a.name
   else
     Result := 'Default';
+end;
+
+function AccountNameValid(const name: string; out why: string): boolean;
+var
+  c: char;
+begin
+  Result := false;
+  why := '';
+  if Trim(name) = '' then
+  begin
+    why := 'Enter a name for the account.';
+    exit;
+  end;
+  // Trndi's add-account prompt allows exactly this set (uconf bAddClick).
+  for c in name do
+    if not (c in ['0'..'9', 'A'..'Z', 'a'..'z', ' ']) then
+    begin
+      why := 'Account names can only contain letters, digits and spaces.';
+      exit;
+    end;
+  Result := true;
+end;
+
+// Writes go through one native with configUser switched per account, as
+// Trndi's settings window does. Only values that differ from what is
+// stored are written: the INI store rewrites the whole file on every
+// SetSetting, and an untouched credential must never overwrite a token a
+// fetch thread rotated since the dialog opened.
+procedure SaveAccounts(const accounts: TAccountEditList;
+  const erase: TStringArray);
+var
+  native: TMultiNative;
+  names: TStringArray;
+  i, n: integer;
+
+  procedure Put(const key, val: string);
+  begin
+    if native.GetSetting(key, '') <> val then
+      native.SetSetting(key, val);
+  end;
+
+begin
+  storeLock.Acquire;
+  try
+    native := TMultiNative.Create;
+    try
+      names := nil;
+      n := 0;
+      for i := 0 to High(accounts) do
+        if accounts[i].info.name <> '' then
+        begin
+          SetLength(names, n + 1);
+          names[n] := accounts[i].info.name;
+          Inc(n);
+        end;
+      native.configUser := '';
+      native.SetCSVSetting('users.names', names, true);
+
+      for i := 0 to High(accounts) do
+        with accounts[i] do
+        begin
+          native.configUser := info.name;
+          Put('user.nick', info.nick);
+          Put('remote.type', info.backend);
+          Put('remote.target', info.target);
+          if credsEdited then
+            Put('remote.creds', info.creds);
+          if info.mmol then
+            Put('unit', 'mmol')
+          else
+            Put('unit', 'mgdl');
+        end;
+
+      native.configUser := '';
+      for i := 0 to High(erase) do
+        native.WipeUserSettings(erase[i]);
+    finally
+      native.Free;
+    end;
+  finally
+    storeLock.Release;
+  end;
 end;
 
 procedure StoreCredentials(const a: TAccountInfo; const creds: string);

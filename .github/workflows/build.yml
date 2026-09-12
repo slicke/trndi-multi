@@ -145,43 +145,28 @@ jobs:
           sudo installer -pkg MacPorts.pkg -target /
           export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
           sudo port -v selfupdate
-          sudo port -N install fpc lazarus gmake
+          # create-dmg for the .dmg; the DMG background needs swift, which the
+          # runner's Xcode already provides.
+          sudo port -N install fpc lazarus gmake create-dmg
 
       # A bare Cocoa binary has no bundle to be activated through, so the
-      # window never comes to the front; wrap it in the smallest .app that
-      # Finder and `open` accept.
-      - name: Build and bundle
+      # window never comes to the front. dist/macos.sh wraps it in
+      # "Trndi Multi.app" (icon and DMG background from the vendored Trndi)
+      # and packs that into a drag-to-Applications .dmg, as Trndi's CI does.
+      # Runs on PRs too, so packaging changes get tested; only main publishes.
+      - name: Build and package
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
           gmake
-          APP="trndi-multi.app"
-          mkdir -p "$APP/Contents/MacOS"
-          cp bin/trndi-multi "$APP/Contents/MacOS/trndi-multi"
-          cat > "$APP/Contents/Info.plist" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key><string>Trndi Multi</string>
-            <key>CFBundleDisplayName</key><string>Trndi Multi</string>
-            <key>CFBundleIdentifier</key><string>com.slicke.trndi-multi</string>
-            <key>CFBundleExecutable</key><string>trndi-multi</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleVersion</key><string>1</string>
-            <key>CFBundleShortVersionString</key><string>1.0</string>
-            <key>NSHighResolutionCapable</key><true/>
-            <key>LSMinimumSystemVersion</key><string>11.0</string>
-          </dict>
-          </plist>
-          PLIST
-          # ditto keeps the bundle's permissions and structure, unlike zip -r
-          # on a runner without the Finder metadata.
-          ditto -c -k --keepParent "$APP" trndi-multi-macos-arm64.zip
+          ./dist/macos.sh
+          mv dist/trndi-multi-macos-arm64.dmg .
       - uses: actions/upload-artifact@v4
         with:
           name: trndi-multi-macos-arm64
-          path: trndi-multi-macos-arm64.zip
+          path: trndi-multi-macos-arm64.dmg
 
   # ===================== RELEASE =====================
   # Rolling releases as trndi-cli does them: every push to main that builds
@@ -221,5 +206,5 @@ jobs:
           # has landed.
           gh release create "build-${NUM}" \
             --title "Build ${NUM}" \
-            --notes "Automated build of ${GITHUB_SHA}. Accounts come from Trndi's settings — see README.md. Linux needs libQt6Pas (libqt6pas6 / qt6pas) and libcurl installed; the Windows zip ships libcurl.dll." \
+            --notes "Automated build of ${GITHUB_SHA}. Accounts come from Trndi's settings — see README.md. Linux needs libQt6Pas (libqt6pas6 / qt6pas) and libcurl installed; the Windows zip ships libcurl.dll; the macOS dmg is unsigned, see its README.txt." \
             dist/*/*

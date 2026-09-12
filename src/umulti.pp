@@ -43,6 +43,9 @@
 
   Keys: F5 refetches every account, F11 toggles full screen, Escape leaves
   it, Q quits.
+
+  Full screen adds a clock strip above the tiles: a wall display has no
+  panel or taskbar to tell the time.
 }
 unit umulti;
 
@@ -53,7 +56,7 @@ interface
 uses
 Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, LCLType,
 Math, DateUtils, trndi.types, trndimulti.accounts, trndimulti.state,
-trndimulti.tile, trndimulti.kiosk;
+trndimulti.tile, trndimulti.kiosk, trndimulti.clock;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -72,13 +75,14 @@ type
     FKiosk: boolean;
     FStartFullscreen: boolean;
     FSnapshotTimer: TTimer;
+    FClock: TClockBar;
     procedure LoadAccounts;
     procedure SnapshotTick(Sender: TObject);
     procedure LayoutTiles;
     procedure TimerTick(Sender: TObject);
     procedure FetchDone(state: TAccountState);
     procedure FetchDue(force: boolean);
-    procedure ToggleFullscreen;
+    procedure SetFullscreen(full: boolean);
     procedure KioskApply(Sender: TObject);
   protected
     procedure Resize; override;
@@ -125,6 +129,11 @@ begin
   FTimer := TTimer.Create(Self);
   FTimer.Interval := TICK_MS;
   FTimer.OnTimer := @TimerTick;
+
+  FClock := TClockBar.Create(Self);
+  FClock.Parent := Self;
+  FClock.Color := Color;
+  FClock.Visible := false;
 
   LoadAccounts;
   LayoutTiles;
@@ -234,9 +243,21 @@ end;
 // wide window and two rows in a tall one, and so on up.
 procedure TfMulti.LayoutTiles;
 var
-  n, cols, rows, best, c, r, i, tw, th: integer;
+  n, cols, rows, best, c, r, i, tw, th, gridTop, avail: integer;
   score, bestScore: double;
 begin
+  // The clock, when shown, takes a strip across the top; the tiles share
+  // what is left. Resize runs once during construction, before the clock
+  // exists; nothing to lay out then either.
+  gridTop := TILE_GAP;
+  if (FClock <> nil) and FClock.Visible then
+  begin
+    FClock.SetBounds(TILE_GAP, TILE_GAP, ClientWidth - 2 * TILE_GAP,
+      Max(24, ClientHeight div 14));
+    gridTop := FClock.Top + FClock.Height + TILE_GAP;
+  end;
+  avail := ClientHeight - gridTop + TILE_GAP;
+
   n := Length(FTiles);
   if n = 0 then
     exit;
@@ -246,7 +267,7 @@ begin
   begin
     r := (n + c - 1) div c;
     tw := (ClientWidth - TILE_GAP * (c + 1)) div c;
-    th := (ClientHeight - TILE_GAP * (r + 1)) div r;
+    th := (avail - TILE_GAP * (r + 1)) div r;
     score := Min(tw / 4, th / 3);
     if score > bestScore then
     begin
@@ -257,10 +278,10 @@ begin
   cols := best;
   rows := (n + cols - 1) div cols;
   tw := (ClientWidth - TILE_GAP * (cols + 1)) div cols;
-  th := (ClientHeight - TILE_GAP * (rows + 1)) div rows;
+  th := (avail - TILE_GAP * (rows + 1)) div rows;
   for i := 0 to n - 1 do
     FTiles[i].SetBounds(TILE_GAP + (i mod cols) * (tw + TILE_GAP),
-      TILE_GAP + (i div cols) * (th + TILE_GAP), tw, th);
+      gridTop + (i div cols) * (th + TILE_GAP), tw, th);
 end;
 
 procedure TfMulti.Resize;
@@ -287,7 +308,7 @@ end;
 procedure TfMulti.KioskApply(Sender: TObject);
 begin
   FKioskTimer.Enabled := false;
-  WindowState := wsFullScreen;
+  SetFullscreen(true);
   if FKiosk then
   begin
     Screen.Cursor := crNone;
@@ -323,12 +344,18 @@ begin
       FTiles[i].Invalidate;
 end;
 
-procedure TfMulti.ToggleFullscreen;
+// The LCL does not track a full-screen change made by the window manager,
+// so every change goes through here and the clock follows it. The layout is
+// redone at once as well: the resize that follows may arrive with the old
+// client size on some widgetsets, or not at all if the size did not change.
+procedure TfMulti.SetFullscreen(full: boolean);
 begin
-  if WindowState = wsFullScreen then
-    WindowState := wsNormal
+  if full then
+    WindowState := wsFullScreen
   else
-    WindowState := wsFullScreen;
+    WindowState := wsNormal;
+  FClock.Visible := full;
+  LayoutTiles;
 end;
 
 procedure TfMulti.KeyDown(var Key: word; Shift: TShiftState);
@@ -337,11 +364,11 @@ begin
     VK_F5:
       FetchDue(true);
     VK_F11:
-      ToggleFullscreen;
+      SetFullscreen(WindowState <> wsFullScreen);
     VK_ESCAPE:
       // A kiosk stays full screen; Q still quits it.
       if (WindowState = wsFullScreen) and (not FKiosk) then
-        WindowState := wsNormal;
+        SetFullscreen(false);
     VK_Q:
       Close;
   else

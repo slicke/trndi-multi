@@ -48,6 +48,8 @@ To add, rename or remove an account later, do it in Trndi and restart trndi-mult
 
 On macOS pass flags through the bundle: `open -a trndi-multi --args --kiosk`.
 
+Full screen, however it was entered, adds a clock strip above the tiles with the time and date: a wall display has no panel or taskbar to show them. It goes away with full screen.
+
 The grid refills the window on resize and picks the column count that gives the biggest tiles, so two accounts sit side by side in a wide window and one above the other in a tall one.
 
 ## Downloads

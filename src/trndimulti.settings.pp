@@ -56,7 +56,7 @@ interface
 
 uses
 Classes, SysUtils, Math, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls,
-Dialogs, trndi.api, trndi.api.registry, trndimulti.accounts;
+Dialogs, trndi.api, trndi.api.registry, trndimulti.accounts, Graphics;
 
 {** Show the window modally. True when the user saved, in which case the
     store has changed and the caller should reload its accounts. }
@@ -70,7 +70,7 @@ type
     sheet: TTabSheet;
     edNick, edUser, edPass: TEdit;
     cbSys: TComboBox;
-    lbUser, lbPass: TLabel;
+    lbUser, lbPass, lbNote: TLabel;
     rgUnit: TRadioGroup;
     btnRemove: TButton;
     info: TAccountInfo;      // As loaded; name is the identity
@@ -106,6 +106,13 @@ const
   NOT_SET_UP = '(not set up)';
   MARGIN = 12;
   ROW = 26;
+  NOTE_H = 4 * (ROW - 8);  // Four lines under the credential box
+  // Shown under the credential of a backend that only Trndi can log in to.
+  NOTE_TRNDI_LOGIN = 'Set this account up in Trndi: its Accounts window '
+    + 'runs the browser login that captures the token, and the account then '
+    + 'appears here. Let one program poll it at a time: every refresh revokes '
+    + 'the previous token, so Trndi and trndi-multi on the same account log '
+    + 'each other out.';
 
 function EditAccounts(owner: TComponent): boolean;
 var
@@ -128,9 +135,9 @@ begin
   inherited CreateNew(AOwner, 0);
   Caption := 'Trndi accounts';
   Width := 520;
-  Height := 420;
+  Height := 490;
   Constraints.MinWidth := 400;
-  Constraints.MinHeight := 360;
+  Constraints.MinHeight := 430;
   Position := poOwnerFormCenter;
   BorderStyle := bsSizeable;
 
@@ -290,6 +297,17 @@ begin
   pg.edPass.OnChange := @PassChange;
   pg.credsEdited := false;
 
+  // Room for a note under the credential; SysChange fills it for a backend
+  // that only Trndi can log in to (CareLink) and blanks it for the rest.
+  pg.lbNote := TLabel.Create(Self);
+  pg.lbNote.Parent := pg.sheet;
+  pg.lbNote.AutoSize := false;
+  pg.lbNote.WordWrap := true;
+  pg.lbNote.Font.Color := clGrayText;
+  pg.lbNote.SetBounds(MARGIN, y, w, NOTE_H);
+  pg.lbNote.Anchors := [akLeft, akTop, akRight];
+  Inc(y, NOTE_H + 6);
+
   pg.rgUnit := TRadioGroup.Create(Self);
   pg.rgUnit.Parent := pg.sheet;
   pg.rgUnit.Caption := 'Unit';
@@ -393,6 +411,10 @@ begin
   end;
   pg.edUser.Enabled := configured;
   pg.edPass.Enabled := configured;
+  if (cls <> nil) and cls.supportsWebLogin then
+    pg.lbNote.Caption := NOTE_TRNDI_LOGIN
+  else
+    pg.lbNote.Caption := '';
 end;
 
 procedure TfAccounts.PassChange(Sender: TObject);

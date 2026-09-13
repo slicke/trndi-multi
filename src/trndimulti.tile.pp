@@ -51,7 +51,7 @@ unit trndimulti.tile;
 interface
 
 uses
-Classes, SysUtils, Controls, Graphics, Types, Math, DateUtils,
+Classes, SysUtils, Controls, Graphics, Types, Math, DateUtils, LCLIntf, LCLType,
 trndi.types, trndi.api, trndimulti.accounts, trndimulti.state;
 
 type
@@ -134,6 +134,17 @@ begin
   words := text.Split([' ', #10, #13]);
   for word in words do
     Result := Max(Result, cv.TextWidth(word));
+end;
+
+// Height of text word-wrapped to width in the canvas's current font.
+function WrappedHeight(cv: TCanvas; const text: string; width: integer): integer;
+var
+  rc: TRect;
+begin
+  rc := Rect(0, 0, width, 0);
+  LCLIntf.DrawText(cv.Handle, PChar(text), Length(text), rc,
+    DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX);
+  Result := rc.Bottom - rc.Top;
 end;
 
 constructor TAccountTile.Create(AOwner: TComponent);
@@ -243,6 +254,7 @@ var
   bg: TColor;
   s, arrow, footer: string;
   style: TTextStyle;
+  box: TRect;
 begin
   r := ClientRect;
   h := r.Bottom - r.Top;
@@ -336,18 +348,29 @@ begin
   else
   begin
     // No reading: say why, in the middle of the tile. Backend errors carry
-    // long unbreakable tokens (a backend code, a URL), so shrink the font
-    // until the widest word fits rather than let TextRect clip it.
+    // long unbreakable tokens (a backend code, a URL) and can run to several
+    // sentences, so shrink the font until the widest word fits the width
+    // and the wrapped text fits the height, rather than let TextRect clip
+    // it at both ends.
     Canvas.Font.Style := [];
     if FState.Busy and (not FState.everFetched) then
       s := 'Connecting…'
     else if FState.err <> '' then
-      s := 'No data' + LineEnding + FState.err
+    begin
+      // The one repair this program cannot make itself, said briefly.
+      s := TrndiLoginHint(FState.info.backend, FState.err);
+      if s = '' then
+        s := FState.err;
+      s := 'No data' + LineEnding + s;
+    end
     else
       s := 'No reading';
+    box := Rect(r.Left + pad, r.Top + Round(h * 0.2), r.Right - pad,
+      r.Bottom - pad);
     vh := Max(11, Round(h * 0.09));
     Canvas.Font.Height := -vh;
-    while (vh > 10) and (WidestWord(Canvas, s) > w - 2 * pad) do
+    while (vh > 10) and ((WidestWord(Canvas, s) > box.Width) or
+        (WrappedHeight(Canvas, s, box.Width) > box.Height)) do
     begin
       vh := vh - 2;
       Canvas.Font.Height := -vh;
@@ -358,8 +381,7 @@ begin
     style.Wordbreak := true;
     style.SingleLine := false;
     style.Opaque := false;
-    Canvas.TextRect(Rect(r.Left + pad, r.Top + Round(h * 0.2), r.Right - pad,
-      r.Bottom - pad), r.Left + pad, r.Top + Round(h * 0.2), s, style);
+    Canvas.TextRect(box, box.Left, box.Top, s, style);
   end;
 end;
 

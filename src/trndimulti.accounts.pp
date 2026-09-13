@@ -139,6 +139,14 @@ function AccountLabel(const a: TAccountInfo): string;
     @param(why). }
 function AccountNameValid(const name: string; out why: string): boolean;
 
+{** What a tile should say instead of @param(err) when only Trndi can fix
+    it; '' otherwise. CareLink's credential is the token its browser login
+    helper captures (the backend's supportsWebLogin), which this program
+    has no counterpart to, so a token that has expired, is missing or is
+    unreadable sends the user to Trndi. The backend's own message is
+    written for Trndi and far too long for a tile. }
+function TrndiLoginHint(const backend, err: string): string;
+
 {** Write the accounts back the way Trndi's settings window does: the
     list of named accounts to users.names, then each account's nickname,
     backend, target, credential and unit. @param(accounts) holds the
@@ -452,6 +460,25 @@ end;
 // stored are written: the INI store rewrites the whole file on every
 // SetSetting, and an untouched credential must never overwrite a token a
 // fetch thread rotated since the dialog opened.
+function TrndiLoginHint(const backend, err: string): string;
+var
+  cls: TrndiAPIClass;
+  e: string;
+begin
+  Result := '';
+  cls := nil;
+  if backend <> '' then
+    cls := BackendClassOf(backend);
+  if (cls = nil) or (not cls.supportsWebLogin) then
+    exit;
+  // The backend's strings are private to its implementation, so go by
+  // content: every one of CareLink's credential failures names the token
+  // or the login; its discovery and network failures name neither.
+  e := LowerCase(err);
+  if (Pos('token', e) > 0) or (Pos('login', e) > 0) then
+    Result := 'Login expired. Use the Trndi app to login again.';
+end;
+
 procedure SaveAccounts(const accounts: TAccountEditList;
   const erase: TStringArray);
 var

@@ -75,6 +75,7 @@ type
     btnRemove: TButton;
     info: TAccountInfo;      // As loaded; name is the identity
     credsEdited: boolean;
+    loginHidden: boolean;    // User and credential rows collapsed (web-login backend)
   end;
 
   TfAccounts = class(TForm)
@@ -108,11 +109,11 @@ const
   ROW = 26;
   NOTE_H = 4 * (ROW - 8);  // Four lines under the credential box
   // Shown under the credential of a backend that only Trndi can log in to.
-  NOTE_TRNDI_LOGIN = 'Set this account up in Trndi: its Accounts window '
-    + 'runs the browser login that captures the token, and the account then '
-    + 'appears here. Let one program poll it at a time: every refresh revokes '
-    + 'the previous token, so Trndi and trndi-multi on the same account log '
-    + 'each other out.';
+  NOTE_TRNDI_LOGIN = 'The token is captured and renewed by Trndi''s browser '
+    + 'login, so this account is set up, and logged in again when it '
+    + 'expires, in Trndi. Let one program poll it at a time: every refresh '
+    + 'revokes the previous token, so Trndi and trndi-multi on the same '
+    + 'account log each other out.';
 
 function EditAccounts(owner: TComponent): boolean;
 var
@@ -390,7 +391,14 @@ procedure TfAccounts.SysChange(Sender: TObject);
 var
   pg: TAccountPage;
   cls: TrndiAPIClass;
-  configured: boolean;
+  configured, webLogin: boolean;
+  delta: integer;
+
+  procedure Shift(c: TControl);
+  begin
+    c.Top := c.Top + delta;
+  end;
+
 begin
   pg := PageOf(TControl(Sender).Parent as TTabSheet);
   if pg = nil then
@@ -411,10 +419,36 @@ begin
   end;
   pg.edUser.Enabled := configured;
   pg.edPass.Enabled := configured;
-  if (cls <> nil) and cls.supportsWebLogin then
+  // A web-login backend's login is the token Trndi's browser flow captured
+  // and the username it carries. Nothing typed here could replace either,
+  // and an accidental edit would overwrite a working login on Save, so both
+  // rows are hidden (Trndi's own settings window hides the username too)
+  // and the note takes their place. The hidden boxes keep their values:
+  // Save reads the target from one and, only if typed in, the credential
+  // from the other, so a hidden pair is stored back as it was.
+  webLogin := (cls <> nil) and cls.supportsWebLogin;
+  if webLogin then
     pg.lbNote.Caption := NOTE_TRNDI_LOGIN
   else
     pg.lbNote.Caption := '';
+  // Trndi stores a placeholder target so one is always present; keep the
+  // store alike (the login flow overwrites it with the real name).
+  if webLogin and (Trim(pg.edUser.Text) = '') then
+    pg.edUser.Text := 'carelink';
+  if webLogin <> pg.loginHidden then
+  begin
+    delta := pg.lbNote.Top - pg.lbUser.Top;
+    if webLogin then
+      delta := -delta;
+    Shift(pg.lbNote);
+    Shift(pg.rgUnit);
+    Shift(pg.btnRemove);
+    pg.loginHidden := webLogin;
+  end;
+  pg.lbUser.Visible := not webLogin;
+  pg.edUser.Visible := not webLogin;
+  pg.lbPass.Visible := not webLogin;
+  pg.edPass.Visible := not webLogin;
 end;
 
 procedure TfAccounts.PassChange(Sender: TObject);
@@ -508,9 +542,8 @@ begin
         bcePassword:
           problem := 'needs a password of at least five characters.';
         bceToken:
-          problem := 'needs the token data captured in a browser (it starts '
-            + 'with "{"), not a password. Trndi''s CareLink guide explains '
-            + 'how to get it.';
+          problem := 'has no login token. Set the account up in Trndi, '
+            + 'whose browser login captures it; it then appears here.';
       end;
     if problem <> '' then
     begin

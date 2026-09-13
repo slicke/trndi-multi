@@ -64,12 +64,12 @@ Every push to `main` that builds green on all platforms becomes a rolling `build
 | Asset | Notes |
 |-------|-------|
 | `trndi-multi-linux-amd64`, `trndi-multi-linux-arm64` | Needs the Qt6 LCL bindings (`libqt6pas6` on Debian/Ubuntu, `qt6pas` on Fedora) and libcurl installed. `chmod +x` and run. |
-| `trndi-multi-windows-x64.zip` | The exe with `libcurl.dll` beside it. Unzip and run. |
+| `trndi-multi-windows-x64.zip` | The exe, self-contained (WinHTTP for transport, the registry for settings). Unzip and run. |
 | `trndi-multi-macos-arm64.dmg` | Unsigned `Trndi Multi.app` for Apple Silicon: open the image, drag it to Applications, then clear the quarantine flag once with `xattr -c "/Applications/Trndi Multi.app"` (the README inside the image walks through it). Reads Trndi's preferences domain (`com.slicke.Trndi`), so a Trndi set up on the Mac is all it needs. |
 
 ## Building
 
-Needs Lazarus (lazbuild) with the LCL, and libcurl (the HTTP transport, as in trndi-cli). Clone with the submodule:
+Needs Lazarus (lazbuild) with the LCL; on Linux and BSD also libcurl, the HTTP transport there (Windows uses WinHTTP and macOS NSURLSession, through Trndi's platform natives). Clone with the submodule:
 
 ```
 git clone --recurse-submodules https://github.com/slicke/trndi-multi.git
@@ -79,7 +79,7 @@ make debug      # debug build; also compiles in Trndi's debug backends
 make install    # to /usr/local/bin
 ```
 
-`make WIDGETSET=gtk2` (or any widgetset your Lazarus has) picks another LCL backend; the Makefile defaults to qt6 on Linux and BSD, cocoa on macOS. Windows builds with `.\make.ps1` (win32 widgetset) and needs `libcurl.dll` next to the exe.
+`make WIDGETSET=gtk2` (or any widgetset your Lazarus has) picks another LCL backend; the Makefile defaults to qt6 on Linux and BSD, cocoa on macOS. Windows builds with `.\make.ps1` (win32 widgetset).
 
 The debug build knows Trndi's synthetic `API_D_*` backends, which is how the screenshot above was made: a scratch `Trndi.cfg` under `XDG_CONFIG_HOME` with six accounts pointed at them.
 

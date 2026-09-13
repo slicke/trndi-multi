@@ -3,9 +3,8 @@
 #   .\make.ps1 debug     debug build
 #   .\make.ps1 clean     remove build artifacts
 #
-# Note: the settings/HTTP layer is Trndi's console native, whose transport is
-# libcurl, so running bin\trndi-multi.exe needs libcurl.dll in PATH or next
-# to the exe (https://curl.se/windows/).
+# The settings/HTTP layer is Trndi's Windows native (registry + WinHTTP), so
+# bin\trndi-multi.exe runs on its own; no libcurl.dll needed.
 
 param([string]$Target = 'release')
 

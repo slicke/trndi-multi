@@ -56,7 +56,7 @@ unit trndimulti.accounts;
 interface
 
 uses
-Classes, SysUtils, trndi.native.console, trndi.api, trndi.api.registry;
+Classes, SysUtils, trndi.native, trndi.api, trndi.api.registry;
 
 type
   {** One account as read from the store. }
@@ -76,26 +76,25 @@ type
   end;
   TAccountList = array of TAccountInfo;
 
-  {** The console native resolves its INI to GetAppConfigDir + trndi.ini, but
-      the GUI stores settings elsewhere: on Linux and BSD via
-      GetAppConfigFile (~/.config/Trndi.cfg), on Windows in the registry,
-      on macOS in the app's preferences domain (NSUserDefaults). Read the
-      GUI's store on each, so a configured Trndi is all the setup this
-      program needs. @link(TrndiAppName) makes ApplicationName = 'Trndi'
-      regardless of this binary's file name. }
-  TMultiNative = class(TTrndiNativeConsole)
-  protected
-    function ResolveIniPath: string; override;
+  {** Trndi's platform native, aimed at Trndi's own store. On Windows and
+      Linux/BSD that takes nothing extra: the natives address
+      HKCU\SOFTWARE\Trndi and GetAppConfigFile, and @link(TrndiAppName)
+      makes ApplicationName = 'Trndi' regardless of this binary's file name.
+      On macOS the native reads NSUserDefaults' standard domain, which is the
+      running app's bundle identifier (com.slicke.trndi-multi in the DMG,
+      none for a bare binary), not Trndi's; the settings methods are
+      overridden there to address Trndi's domain through CFPreferences. }
+  TMultiNative = class(TrndiNative)
+{$IF DEFINED(DARWIN)}
   public
-{$IF DEFINED(WINDOWS) OR DEFINED(DARWIN)}
     function GetSetting(const keyname: string; def: string = '';
       global: boolean = false): string; override;
     procedure SetSetting(const keyname: string; const val: string;
       global: boolean = false); override; overload;
     // The base class's WipeUserSettings walks ExportSettings and calls
     // DeleteSetting on every key with the account's prefix; both must
-    // address the GUI's store too, or a removed account's keys would be
-    // looked for in the console INI.
+    // address Trndi's domain too, or a removed account's keys would be
+    // looked for in this app's own.
     procedure DeleteSetting(const keyname: string;
       global: boolean = false); override;
     function ExportSettings: string; override;
@@ -169,9 +168,7 @@ function OpenBackend(const a: TAccountInfo; out api: TrndiAPI;
 implementation
 
 uses
-{$IF DEFINED(WINDOWS)}
-registry, Windows,
-{$ELSEIF DEFINED(DARWIN)}
+{$IF DEFINED(DARWIN)}
 MacOSAll,
 {$ENDIF}
 SyncObjs, trndi.types;
@@ -180,6 +177,10 @@ var
   // Two accounts can rotate at the same moment on two fetch threads, and the
   // INI store rewrites the whole file on every write.
   storeLock: TCriticalSection;
+
+type
+  // Reaches TrndiAPI's protected native field; see OpenBackend.
+  TAPIWithNative = class(TrndiAPI);
 
 const
   // initCGMCore's untouched default high limit: a backend that reports no
@@ -190,96 +191,6 @@ function TrndiAppName: string;
 begin
   Result := 'Trndi';
 end;
-
-function TMultiNative.ResolveIniPath: string;
-begin
-  Result := GetAppConfigFile(false);
-end;
-
-{$IFDEF WINDOWS}
-// The Windows GUI keeps settings in the registry, not an INI — read the same
-// values (HKCU\SOFTWARE\Trndi, value names like 'remote.type', or
-// 'Name_remote.type' under a multi-user account: buildKey applies the same
-// prefix the GUI's own registry native applies).
-function TMultiNative.GetSetting(const keyname: string; def: string;
-global: boolean): string;
-var
-  reg: TRegistry;
-  key: string;
-begin
-  Result := def;
-  key := buildKey(keyname, global);
-  reg := TRegistry.Create;
-  try
-    reg.RootKey := HKEY_CURRENT_USER;
-    if reg.OpenKeyReadOnly('\SOFTWARE\Trndi\') then
-      if reg.ValueExists(key) then
-        Result := reg.ReadString(key);
-  finally
-    reg.Free;
-  end;
-end;
-
-procedure TMultiNative.SetSetting(const keyname: string; const val: string;
-global: boolean);
-var
-  reg: TRegistry;
-begin
-  reg := TRegistry.Create;
-  try
-    reg.RootKey := HKEY_CURRENT_USER;
-    if reg.OpenKey('\SOFTWARE\Trndi\', true) then
-      reg.WriteString(buildKey(keyname, global), val);
-  finally
-    reg.Free;
-  end;
-end;
-
-procedure TMultiNative.DeleteSetting(const keyname: string; global: boolean);
-var
-  reg: TRegistry;
-  key: string;
-begin
-  key := buildKey(keyname, global);
-  reg := TRegistry.Create;
-  try
-    reg.RootKey := HKEY_CURRENT_USER;
-    if reg.OpenKey('\SOFTWARE\Trndi\', false) then
-      if reg.ValueExists(key) then
-        reg.DeleteValue(key);
-  finally
-    reg.Free;
-  end;
-end;
-
-// key=value lines under a [trndi] header, the shape WipeUserSettings
-// parses (and Trndi's own registry native exports).
-function TMultiNative.ExportSettings: string;
-var
-  reg: TRegistry;
-  names, sl: TStringList;
-  i: integer;
-begin
-  sl := TStringList.Create;
-  names := TStringList.Create;
-  reg := TRegistry.Create;
-  try
-    reg.RootKey := HKEY_CURRENT_USER;
-    sl.Add('[trndi]');
-    if reg.OpenKeyReadOnly('\SOFTWARE\Trndi\') then
-    begin
-      reg.GetValueNames(names);
-      for i := 0 to names.Count - 1 do
-        sl.Add(names[i] + '=' + reg.ReadString(names[i]));
-    end;
-    Result := sl.Text;
-  finally
-    reg.Free;
-    names.Free;
-    sl.Free;
-  end;
-end;
-{$ENDIF}
 
 {$IFDEF DARWIN}
 // The macOS GUI keeps settings in NSUserDefaults under its bundle
@@ -459,6 +370,9 @@ begin
   names := nil;
   native := TMultiNative.Create;
   try
+    // The Windows native caches the registry process-wide; Trndi may
+    // have written to it since the last read.
+    native.ReloadSettings;
     if not native.TryGetCSVSetting('users.names', names, true) then
       names := nil;
     // Trndi's picker sorts case-insensitively rather than in insertion
@@ -493,6 +407,9 @@ var
 begin
   native := TMultiNative.Create;
   try
+    // The Windows native caches the registry process-wide; Trndi may
+    // have written to it since the last read.
+    native.ReloadSettings;
     Result := ReadAccount(native, name);
   finally
     native.Free;
@@ -620,6 +537,11 @@ begin
     err := Format('Unknown backend "%s" in settings.', [a.backend]);
     exit;
   end;
+  // The backend frees its native with itself. On Linux that destructor,
+  // unless told otherwise, deletes Trndi's panel indicator cache
+  // (~/.cache/trndi/current.txt) and clears its taskbar badge, right for
+  // Trndi exiting but not for us: Trndi may be running beside this program.
+  TAPIWithNative(api).native.noFree := true;
   if not api.connect then
   begin
     err := api.errormsg;

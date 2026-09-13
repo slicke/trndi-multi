@@ -26,10 +26,9 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="vendor/trndi/inc"/>
-            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils"/>
+            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils"/>
             <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS=&apos;darwin&apos; then CustomOptions += &apos; -k-lcurl&apos;;"/>
           <Parsing>
             <SyntaxOptions>
               <IncludeAssertionCode Value="True"/>
@@ -57,7 +56,7 @@
             </Options>
           </Linking>
           <Other>
-            <CustomOptions Value="-dX_CONSOLE -dDEBUG"/>
+            <CustomOptions Value="-dDEBUG"/>
           </Other>
         </CompilerOptions>
       </Item2>
@@ -116,10 +115,9 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="vendor/trndi/inc"/>
-      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils"/>
+      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
-    <Conditionals Value="if TargetOS=&apos;darwin&apos; then CustomOptions += &apos; -k-lcurl&apos;;"/>
     <CodeGeneration>
       <SmartLinkUnit Value="True"/>
       <Optimizations>
@@ -137,9 +135,6 @@
         </Win32>
       </Options>
     </Linking>
-    <Other>
-      <CustomOptions Value="-dX_CONSOLE"/>
-    </Other>
   </CompilerOptions>
   <Debugging>
     <Exceptions Count="3">

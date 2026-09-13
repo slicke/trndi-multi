@@ -96,22 +96,13 @@ jobs:
         shell: pwsh
         run: .\make.ps1
 
-      # The exe imports libcurl.dll at load time (the console native's HTTP
-      # transport). Ship it in the zip so the download runs as it is: the
-      # official curl-for-Windows package names it libcurl-x64.dll, the
-      # import table wants libcurl.dll. Its licence text rides along.
-      - name: Package with libcurl
+      # WinHTTP transport and registry settings through Trndi's Windows
+      # native: the exe has no runtime dependencies beyond Windows itself.
+      - name: Package
         shell: pwsh
         run: |
-          curl.exe -L --fail --retry 5 --retry-delay 5 --retry-all-errors -o curlpkg.zip 'https://curl.se/windows/latest.cgi?p=win64-mingw.zip'
-          Expand-Archive curlpkg.zip -DestinationPath curlpkg
-          $dll = Get-ChildItem curlpkg -Recurse -Filter libcurl-x64.dll | Select-Object -First 1
-          if (-not $dll) { throw 'libcurl-x64.dll not found in curl package' }
           New-Item -ItemType Directory pkg | Out-Null
           Copy-Item bin\trndi-multi.exe pkg\
-          Copy-Item $dll.FullName pkg\libcurl.dll
-          $lic = Get-ChildItem curlpkg -Recurse -Filter COPYING.txt | Select-Object -First 1
-          if ($lic) { Copy-Item $lic.FullName pkg\COPYING-curl.txt }
           Copy-Item LICENSE pkg\LICENSE.txt
           Compress-Archive -Path pkg\* -DestinationPath trndi-multi-windows-x64.zip
       - uses: actions/upload-artifact@v4
@@ -206,5 +197,5 @@ jobs:
           # has landed.
           gh release create "build-${NUM}" \
             --title "Build ${NUM}" \
-            --notes "Automated build of ${GITHUB_SHA}. Accounts come from Trndi's settings — see README.md. Linux needs libQt6Pas (libqt6pas6 / qt6pas) and libcurl installed; the Windows zip ships libcurl.dll; the macOS dmg is unsigned, see its README.txt." \
+            --notes "Automated build of ${GITHUB_SHA}. Accounts come from Trndi's settings — see README.md. Linux needs libQt6Pas (libqt6pas6 / qt6pas) and libcurl installed; the macOS dmg is unsigned, see its README.txt." \
             dist/*/*

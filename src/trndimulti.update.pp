@@ -86,7 +86,9 @@ function IsPRBuild: boolean;
     releases, newest first) against this build. Pure; exposed for testing.
     @param(name The winning release's display name)
     @param(url Its page, or empty when none is newer) }
-function NewerRelease(const json: string; out name, url: string): boolean;
+function NewerRelease(const json: string; out name, url: string): boolean; overload;
+{** As above, with the release's notes (its body, Markdown) too. }
+function NewerRelease(const json: string; out name, url, notes: string): boolean; overload;
 
 {** When this binary was built, in local time: CI's BUILD_DATE, or the
     compile date for a local build. }
@@ -95,8 +97,9 @@ function BuildDateTime: TDateTime;
 implementation
 
 uses
-SysUtils, DateUtils, Forms, Controls, Dialogs, LCLIntf, fpjson, jsonparser,
-trndimulti.buildinfo, trndi.native, trndimulti.accounts;
+SysUtils, DateUtils, Forms, Controls, StdCtrls, Graphics, Dialogs, LCLIntf,
+fpjson, jsonparser, trndimulti.buildinfo, trndi.native, trndimulti.accounts,
+trndimulti.markdown;
 
 const
   RELEASES_API = 'https://api.github.com/repos/slicke/trndi-multi/releases/latest';
@@ -112,6 +115,7 @@ type
     FResponse: string;
     FHasNewer: boolean;
     FReleaseName: string;
+    FNotes: string;
     FLatestName: string;
     FDownloadURL: string;
     procedure ApplyResult;
@@ -207,6 +211,13 @@ end;
 
 function NewerRelease(const json: string; out name, url: string): boolean;
 var
+  notes: string;
+begin
+  Result := NewerRelease(json, name, url, notes);
+end;
+
+function NewerRelease(const json: string; out name, url, notes: string): boolean;
+var
   data: TJSONData;
   arr: TJSONArray;
   i: integer;
@@ -237,6 +248,7 @@ var
   procedure Take(const rel: TJSONObject);
   begin
     name := rel.Get('name', rel.Get('tag_name', ''));
+    notes := rel.Get('body', '');
     url := rel.Get('html_url', '');
     if url = '' then
       url := RELEASES_PAGE;
@@ -246,6 +258,7 @@ begin
   Result := false;
   name := '';
   url := '';
+  notes := '';
   data := nil;
   try
     try
@@ -374,7 +387,7 @@ begin
         FLatestName := 'unknown';
       end;
       data.Free;
-      FHasNewer := NewerRelease(FResponse, FReleaseName, FDownloadURL);
+      FHasNewer := NewerRelease(FResponse, FReleaseName, FDownloadURL, FNotes);
     end;
   except
     FFetchOK := false;
@@ -383,8 +396,92 @@ begin
     Synchronize(@ApplyResult);
 end;
 
-// Main thread. The dialog buttons follow Trndi's: download now, not now,
-// or not for another fortnight.
+{------------------------------------------------------------------------------
+  The dialog
+ ------------------------------------------------------------------------------}
+
+// The release notes are Markdown (CI writes them as the commit subjects
+// since the previous build), so the dialog is a pane rather than a
+// message box. The buttons follow Trndi's: download now, not now, or not
+// for another fortnight.
+function ShowUpdateDialog(const title, md: string): TModalResult;
+const
+  MARGIN = 12;
+var
+  f: TForm;
+  lbTitle: TLabel;
+  pane: TMarkdownPane;
+  btnDownload, btnLater, btnSnooze: TButton;
+begin
+  f := TForm.CreateNew(nil, 0);
+  try
+    f.Caption := 'Trndi Multi';
+    f.Width := 540;
+    f.Height := 420;
+    f.Constraints.MinWidth := 400;
+    f.Constraints.MinHeight := 260;
+    f.Position := poScreenCenter;
+    f.BorderStyle := bsSizeable;
+
+    lbTitle := TLabel.Create(f);
+    lbTitle.Parent := f;
+    lbTitle.Font.Style := [fsBold];
+    lbTitle.Font.Height := -15;
+    lbTitle.WordWrap := true;
+    lbTitle.AutoSize := true;
+    lbTitle.Anchors := [akLeft, akTop, akRight];
+    lbTitle.Left := MARGIN;
+    lbTitle.Top := MARGIN;
+    lbTitle.Width := f.ClientWidth - 2 * MARGIN;
+    lbTitle.Caption := title;
+
+    // Snooze on its own at the left; the two answers together at the right.
+    btnSnooze := TButton.Create(f);
+    btnSnooze.Parent := f;
+    btnSnooze.Caption := 'Remind me in ' + IntToStr(SNOOZE_DAYS) + ' days';
+    btnSnooze.ModalResult := mrIgnore;
+    btnSnooze.AutoSize := true;
+    btnSnooze.Anchors := [akLeft, akBottom];
+    btnSnooze.Left := MARGIN;
+    btnSnooze.Top := f.ClientHeight - MARGIN - btnSnooze.Height;
+
+    btnDownload := TButton.Create(f);
+    btnDownload.Parent := f;
+    btnDownload.Caption := 'Download';
+    btnDownload.Default := true;
+    btnDownload.ModalResult := mrYes;
+    btnDownload.AutoSize := true;
+    btnDownload.Anchors := [akRight, akBottom];
+    btnDownload.Left := f.ClientWidth - MARGIN - btnDownload.Width;
+    btnDownload.Top := btnSnooze.Top;
+
+    btnLater := TButton.Create(f);
+    btnLater.Parent := f;
+    btnLater.Caption := 'Not now';
+    btnLater.Cancel := true;
+    btnLater.ModalResult := mrNo;
+    btnLater.AutoSize := true;
+    btnLater.Anchors := [akRight, akBottom];
+    btnLater.Left := btnDownload.Left - 8 - btnLater.Width;
+    btnLater.Top := btnSnooze.Top;
+
+    pane := TMarkdownPane.Create(f);
+    pane.Parent := f;
+    pane.SetTheme(clWindow, clWindowText, 14, 'body { padding: 8px 10px; }');
+    pane.Load(md);
+    pane.Anchors := [akLeft, akTop, akRight, akBottom];
+    pane.Left := MARGIN;
+    pane.Top := lbTitle.Top + lbTitle.Height + MARGIN;
+    pane.Width := f.ClientWidth - 2 * MARGIN;
+    pane.Height := btnSnooze.Top - MARGIN - pane.Top;
+
+    Result := f.ShowModal;
+  finally
+    f.Free;
+  end;
+end;
+
+// Main thread.
 procedure TUpdateCheckThread.ApplyResult;
 var
   msg: string;
@@ -404,15 +501,14 @@ begin
 
   if FHasNewer then
   begin
-    msg := 'A newer build of trndi-multi is available: ' + FReleaseName +
-      '.' + LineEnding + 'This is ' + BuildLabel + '.';
+    msg := 'This is ' + BuildLabel + '.' + LineEnding + LineEnding;
     if IsPRBuild then
-      msg := msg + LineEnding + LineEnding +
-        'This is a pull-request build; the release may be what it was made from.';
-    case QuestionDlg('Trndi Multi', msg, mtInformation,
-      [mrYes, 'Download', 'IsDefault',
-       mrNo, 'Not now', 'IsCancel',
-       mrIgnore, 'Remind me in ' + IntToStr(SNOOZE_DAYS) + ' days'], 0) of
+      msg := msg + '_This is a pull-request build; the release may be what ' +
+        'it was made from._' + LineEnding + LineEnding;
+    if Trim(FNotes) <> '' then
+      msg := msg + '---' + LineEnding + LineEnding + FNotes;
+    case ShowUpdateDialog('A newer build of trndi-multi is available: ' +
+      FReleaseName, msg) of
     mrYes:
       OpenURL(FDownloadURL);
     mrIgnore:

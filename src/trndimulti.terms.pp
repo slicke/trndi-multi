@@ -65,7 +65,7 @@ implementation
 
 uses
 Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Graphics, LCLIntf,
-trndimulti.accounts;
+trndimulti.accounts, trndimulti.markdown;
 
 const
   // Trndi's currentTerms, kept in step: 260804 added the warning that
@@ -78,19 +78,23 @@ const
   KEY_PREFIX = 'trndi-multi.';
   DISCLAIMER_URL = 'https://github.com/slicke/trndi/blob/main/DISCLAIMER.md';
 
+  GPL_URL = 'https://www.gnu.org/licenses/gpl-3.0.html';
+
+  // Markdown, shown by a TMarkdownPane; the links open in the browser.
   TERMS_TEXT =
-    'This program is NOT a medical device.' + LineEnding +
-    '• Do NOT make medical decisions based on this data' + LineEnding +
-    '• Data may be WRONG, delayed, or unavailable' + LineEnding +
-    '• A tile that stops updating may not be noticed — trndi-multi is NOT an alarm' + LineEnding +
-    '• Always verify with the official CGM device' + LineEnding +
-    '• For emergencies, contact medical professionals' + LineEnding + LineEnding +
-    'By continuing, you acknowledge that:' + LineEnding +
-    '• You use this program at your own risk' + LineEnding +
-    '• The developers have NO LIABILITY' + LineEnding +
-    '• You have read and agree to the full terms' + LineEnding + LineEnding +
-    'trndi-multi and Trndi are free software under the GNU General Public ' +
-    'License v3, with the medical disclaimer above as an additional term.';
+    '**This program is NOT a medical device.**' + LineEnding + LineEnding +
+    '- Do NOT make medical decisions based on this data' + LineEnding +
+    '- Data may be WRONG, delayed, or unavailable' + LineEnding +
+    '- A tile that stops updating may not be noticed: trndi-multi is NOT an alarm' + LineEnding +
+    '- Always verify with the official CGM device' + LineEnding +
+    '- For emergencies, contact medical professionals' + LineEnding + LineEnding +
+    'By continuing, you acknowledge that:' + LineEnding + LineEnding +
+    '- You use this program at your own risk' + LineEnding +
+    '- The developers have NO LIABILITY' + LineEnding +
+    '- You have read and agree to the full terms' + LineEnding + LineEnding +
+    'trndi-multi and Trndi are free software under the ' +
+    '[GNU General Public License v3](' + GPL_URL + '), with the ' +
+    '[medical disclaimer](' + DISCLAIMER_URL + ') above as an additional term.';
 
 type
   TfTerms = class(TForm)
@@ -107,7 +111,7 @@ const
   MARGIN = 12;
 var
   lbTitle, lbQuestion: TLabel;
-  memo: TMemo;
+  terms: TMarkdownPane;
   btnAgree, btnRead, btnQuit: TButton;
 begin
   inherited CreateNew(AOwner, 0);
@@ -180,20 +184,18 @@ begin
     lbQuestion.Caption := 'Do you agree to the terms and the full license?';
   lbQuestion.Top := btnQuit.Top - MARGIN - lbQuestion.Height;
 
-  memo := TMemo.Create(Self);
-  memo.Parent := Self;
-  memo.ReadOnly := true;
-  memo.WordWrap := true;
-  memo.ScrollBars := ssAutoVertical;
-  memo.Color := clWhite;
-  memo.Font.Color := RGBToColor($A9, $11, $34);
-  memo.Font.Height := -14;
-  memo.Text := TERMS_TEXT;
-  memo.Anchors := [akLeft, akTop, akRight, akBottom];
-  memo.Left := MARGIN;
-  memo.Top := lbTitle.Top + lbTitle.Height + MARGIN;
-  memo.Width := ClientWidth - 2 * MARGIN;
-  memo.Height := lbQuestion.Top - MARGIN - memo.Top;
+  // The terms themselves: white on the crimson the desktop app uses for
+  // its warning, in a pane that scrolls if the window is made small.
+  terms := TMarkdownPane.Create(Self);
+  terms.Parent := Self;
+  terms.SetTheme(clWhite, RGBToColor($A9, $11, $34), 14,
+    'body { padding: 8px 10px; }');
+  terms.Load(TERMS_TEXT);
+  terms.Anchors := [akLeft, akTop, akRight, akBottom];
+  terms.Left := MARGIN;
+  terms.Top := lbTitle.Top + lbTitle.Height + MARGIN;
+  terms.Width := ClientWidth - 2 * MARGIN;
+  terms.Height := lbQuestion.Top - MARGIN - terms.Top;
 
   // Under the snapshot test hook (see umulti) there is nobody to click:
   // render this dialog beside the window's snapshot and accept, so the

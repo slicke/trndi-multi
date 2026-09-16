@@ -40,6 +40,14 @@ The first start puts up the medical disclaimer, the same one Trndi shows, and wa
 - **Rotated tokens are saved.** CareLink swaps its refresh token on every refresh and revokes the old one. trndi-multi writes the new one back to the account's settings the same way Trndi does, so neither program is left with a dead token at its next start. Two consequences: let only one of the two programs poll a given CareLink account at a time (each refresh revokes the token the other still holds, so they log each other out; a separate care partner login per program avoids this), and when the token has expired anyway, typically after a night with neither program running, log in again in Trndi. The tile says so and recovers on its next fetch.
 - **No data says why.** An account that cannot connect shows the backend's error on its tile; the others carry on.
 
+## Reports
+
+_Save report_ in the menu writes a PDF with one section per account: the latest reading as the tile shows it, the last 24 hours' time in range (by the account's own limits and, where set, its personal target band), mean, spread and extremes, a chart of the day's readings against those limits, and an hourly table. Something to hand to a clinic, and the one thing a wall cannot show.
+
+The day's readings are fetched through each account's existing connection (a second login would revoke a CareLink token), so the wall pauses its own polling for the few seconds the report takes and resumes when it is saved. Dexcom Share serves at most a day, which is why the report covers a day; time in range is the share of readings, not of time, so a gap in the data is not counted either way. Every page carries the medical disclaimer.
+
+The dialogs and the report are rendered by [Pixie](https://gitlab.com/retrofoxed/pixie), a pure-Pascal HTML/CSS engine vendored as a submodule (`vendor/pixie`, MIT). It draws through the same widgetset as the rest of the window and adds no runtime dependency.
+
 ## Keys and flags
 
 | Key | Action |
@@ -48,7 +56,7 @@ The first start puts up the medical disclaimer, the same one Trndi shows, and wa
 | `F11` | Toggle full screen |
 | `Esc` | Leave full screen (not in kiosk mode) |
 | `Q` | Quit |
-| Right-click | Menu: _Accounts_, refresh, full screen, _Check for updates_, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
+| Right-click | Menu: _Accounts_, refresh, full screen, _Save report_, _Check for updates_, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
 
 | Flag | Effect |
 |------|--------|

@@ -61,9 +61,10 @@ interface
 
 uses
 Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus,
-LCLType, Math, DateUtils, trndi.types, trndimulti.accounts,
+LCLType, LCLIntf, Dialogs, Math, DateUtils, trndi.types, trndimulti.accounts,
 trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
-trndimulti.settings, trndimulti.update;
+trndimulti.settings, trndimulti.update, trndimulti.markdown,
+trndimulti.report;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -78,13 +79,17 @@ type
     FTimer: TTimer;
     FKioskTimer: TTimer;
     FUnit: BGUnit;
-    FEmpty: TLabel;
+    FEmpty: TMarkdownPane;
     FKiosk: boolean;
     FStartFullscreen: boolean;
     FSnapshotTimer: TTimer;
+    FReportTimer: TTimer;
     FUpdateTimer: TTimer;
     FClock: TClockBar;
     FMenu: TPopupMenu;
+    // Where the report goes once every fetch in flight has landed; ''
+    // when none is wanted. Polling pauses while it is set.
+    FReportFile: string;
     procedure BuildMenu;
     procedure LoadAccounts;
     procedure ClearAccounts;
@@ -93,7 +98,11 @@ type
     procedure MenuFullscreen(Sender: TObject);
     procedure MenuQuit(Sender: TObject);
     procedure MenuUpdate(Sender: TObject);
+    procedure MenuReport(Sender: TObject);
+    procedure TryStartReport;
+    procedure ReportDone(const fileName, err: string);
     procedure SnapshotTick(Sender: TObject);
+    procedure ReportTick(Sender: TObject);
     procedure UpdateTick(Sender: TObject);
     procedure LayoutTiles;
     procedure TimerTick(Sender: TObject);
@@ -117,6 +126,8 @@ implementation
 
 const
   TILE_GAP = 8;
+  TRNDI_URL = 'https://github.com/slicke/trndi';
+  GUIDE_URL = 'https://github.com/slicke/trndi/blob/main/guides/Multiuser.md';
   // How often the window checks whether an account is due and refreshes the
   // reading ages on the tiles.
   TICK_MS = 10000;
@@ -159,6 +170,17 @@ begin
   FetchDue(true);
   FTimer.Enabled := true;
 
+  // Test hook: TRNDI_MULTI_REPORT=<file.pdf> saves the report there a few
+  // seconds in, once the first fetches have landed, and quits; a failure
+  // goes to stderr and the exit code. For CI, against a synthetic backend.
+  if GetEnvironmentVariable('TRNDI_MULTI_REPORT') <> '' then
+  begin
+    FReportTimer := TTimer.Create(Self);
+    FReportTimer.Interval := 6000;
+    FReportTimer.OnTimer := @ReportTick;
+    FReportTimer.Enabled := true;
+  end;
+
   // Test hook: TRNDI_MULTI_SNAPSHOT=<file.png> renders the window to that
   // file a few seconds in and quits. With QT_QPA_PLATFORM=offscreen this
   // gives a screenshot with no display and no screen grab, for CI and for
@@ -190,13 +212,25 @@ begin
   finally
     img.Free;
   end;
+  // The accounts window snapshots itself (<file>.accounts.png) and cancels.
+  if not FKiosk then
+    EditAccounts(Self);
   Close;
+end;
+
+procedure TfMulti.ReportTick(Sender: TObject);
+begin
+  FReportTimer.Enabled := false;
+  FReportFile := GetEnvironmentVariable('TRNDI_MULTI_REPORT');
+  TryStartReport;
 end;
 
 destructor TfMulti.Destroy;
 begin
   FTimer.Enabled := false;
   AbandonUpdateCheck;
+  // Before the states: the report reads through their backends.
+  AbandonReport;
   if FKiosk then
     SetKeepAwake(false);
   ClearAccounts;
@@ -219,6 +253,8 @@ begin
   Item('-', nil);
   Item('Refresh now' + #9 + 'F5', @MenuRefresh);
   Item('Full screen' + #9 + 'F11', @MenuFullscreen);
+  Item('-', nil);
+  Item('Save report...', @MenuReport);
   Item('-', nil);
   Item('Check for updates...', @MenuUpdate);
   Item('Quit' + #9 + 'Q', @MenuQuit);
@@ -257,6 +293,13 @@ end;
 // would, without the restart.
 procedure TfMulti.MenuAccounts(Sender: TObject);
 begin
+  // Saving reloads the accounts, which frees the backends a report reads.
+  if FReportFile <> '' then
+  begin
+    MessageDlg('Trndi Multi', 'A report is being prepared; try again when ' +
+      'it has been saved.', mtInformation, [mbOK], 0);
+    exit;
+  end;
   if not EditAccounts(Self) then
     exit;
   ClearAccounts;
@@ -317,25 +360,28 @@ begin
 
   if n = 0 then
   begin
-    FEmpty := TLabel.Create(Self);
+    FEmpty := TMarkdownPane.Create(Self);
     FEmpty.Parent := Self;
     FEmpty.Align := alClient;
-    FEmpty.Alignment := taCenter;
-    FEmpty.Layout := tlCenter;
-    FEmpty.WordWrap := true;
-    FEmpty.Font.Color := clWhite;
-    FEmpty.Font.Height := -16;
     FEmpty.PopupMenu := FMenu;
-    FEmpty.Caption := 'No Trndi accounts set up.' + LineEnding + LineEnding;
+    FEmpty.SetTheme(BackgroundColor, $C8C8C8, 16,
+      'body { text-align: center; padding: 12% 12% 0; }' +
+      'h2 { color: #FFFFFF; font-weight: normal; font-size: 1.6em; }' +
+      'p { margin-bottom: 1em; }');
     if FKiosk then
-      FEmpty.Caption := FEmpty.Caption +
-        'Accounts and their backends are managed in Trndi''s settings ' +
-        'window, or in this program''s Accounts window outside kiosk mode; ' +
-        'they are read from ' + SettingsLocation + '.'
+      FEmpty.Load(
+        '## No Trndi accounts set up' + LineEnding + LineEnding +
+        'Accounts and their backends are managed in [Trndi](' + TRNDI_URL +
+        ')''s settings window, or in this program''s Accounts window ' +
+        'outside kiosk mode.' + LineEnding + LineEnding +
+        'Settings: `' + SettingsLocation + '`')
     else
-      FEmpty.Caption := FEmpty.Caption +
-        'Right-click here and choose Accounts to add them, or set them up ' +
-        'in Trndi: both use the same settings (' + SettingsLocation + ').';
+      FEmpty.Load(
+        '## No Trndi accounts set up' + LineEnding + LineEnding +
+        'Right-click here and choose **Accounts** to add them, or set them ' +
+        'up in [Trndi](' + TRNDI_URL + '): both use the same settings. ' +
+        'The walkthrough is in [Trndi''s multi-user guide](' + GUIDE_URL + ').' +
+        LineEnding + LineEnding + 'Settings: `' + SettingsLocation + '`');
   end;
 end;
 
@@ -446,6 +492,10 @@ procedure TfMulti.FetchDue(force: boolean);
 var
   i: integer;
 begin
+  // A report wanted or running: no new fetch, so it gets the backends to
+  // itself. Polling picks up again from ReportDone.
+  if FReportFile <> '' then
+    exit;
   for i := 0 to High(FStates) do
     if (not FStates[i].Busy) and (force or (FStates[i].nextDue <= Now)) then
       StartFetch(FStates[i], @FetchDone);
@@ -458,6 +508,97 @@ begin
   for i := 0 to High(FTiles) do
     if FTiles[i].State = state then
       FTiles[i].Invalidate;
+  TryStartReport;
+end;
+
+{------------------------------------------------------------------------------
+  The report
+ ------------------------------------------------------------------------------}
+
+procedure TfMulti.MenuReport(Sender: TObject);
+var
+  dlg: TSaveDialog;
+begin
+  if FReportFile <> '' then
+  begin
+    MessageDlg('Trndi Multi', 'A report is already being prepared.',
+      mtInformation, [mbOK], 0);
+    exit;
+  end;
+  if Length(FStates) = 0 then
+  begin
+    MessageDlg('Trndi Multi', 'There are no accounts to report on.',
+      mtInformation, [mbOK], 0);
+    exit;
+  end;
+  dlg := TSaveDialog.Create(nil);
+  try
+    dlg.Title := 'Save report';
+    dlg.DefaultExt := 'pdf';
+    dlg.Filter := 'PDF document|*.pdf';
+    dlg.Options := [ofOverwritePrompt, ofPathMustExist, ofEnableSizing];
+    dlg.InitialDir := GetUserDir;
+    dlg.FileName := 'trndi-multi-report-' +
+      FormatDateTime('yyyy-mm-dd', Now) + '.pdf';
+    if not dlg.Execute then
+      exit;
+    FReportFile := dlg.FileName;
+  finally
+    dlg.Free;
+  end;
+  Screen.Cursor := crHourGlass;
+  TryStartReport;
+end;
+
+// Start the report once no fetch is in flight: from the menu, and from
+// FetchDone for each fetch that was running when the menu was used.
+procedure TfMulti.TryStartReport;
+var
+  i: integer;
+  accts: TReportAccounts;
+begin
+  if (FReportFile = '') or ReportRunning then
+    exit;
+  for i := 0 to High(FStates) do
+    if FStates[i].Busy then
+      exit;
+  accts := nil;
+  SetLength(accts, Length(FStates));
+  for i := 0 to High(FStates) do
+  begin
+    accts[i].info := FStates[i].info;
+    accts[i].api := FStates[i].api;
+    accts[i].err := FStates[i].err;
+    accts[i].current := FStates[i].current;
+    accts[i].haveCurrent := FStates[i].haveCurrent;
+    accts[i].stale := FStates[i].IsStale;
+  end;
+  StartReport(accts, FUnit, FReportFile, @ReportDone);
+end;
+
+procedure TfMulti.ReportDone(const fileName, err: string);
+begin
+  FReportFile := '';
+  Screen.Cursor := crDefault;
+  if FReportTimer <> nil then
+  begin
+    if err <> '' then
+    begin
+      WriteLn(StdErr, 'Report failed: ', err);
+      ExitCode := 1;
+    end;
+    Close;
+    exit;
+  end;
+  if err <> '' then
+    MessageDlg('Trndi Multi', 'The report could not be saved.' + LineEnding +
+      err, mtError, [mbOK], 0)
+  else if QuestionDlg('Trndi Multi', 'The report was saved as' + LineEnding +
+      fileName, mtInformation, [mrYes, 'Open', 'IsDefault', mrOK, 'Close'],
+      0) = mrYes then
+    OpenDocument(fileName);
+  // The accounts have been waiting for the report.
+  FetchDue(false);
 end;
 
 // The LCL does not track a full-screen change made by the window manager,

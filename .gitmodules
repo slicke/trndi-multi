@@ -1,3 +1,6 @@
 [submodule "vendor/trndi"]
 	path = vendor/trndi
 	url = https://github.com/slicke/trndi.git
+[submodule "vendor/pixie"]
+	path = vendor/pixie
+	url = https://gitlab.com/retrofoxed/pixie.git

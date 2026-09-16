@@ -143,6 +143,10 @@ procedure StartFetch(state: TAccountState; onDone: TStateEvent);
 
 {** An age in minutes as people say it: "7 min", "1 h 5 min", "2 h",
     "1 d 3 h". }
+{** Placeholder readings and anything before @param(cutoff) out of
+    @param(res), and what is left sorted ascending by time. }
+procedure TidyHistory(var res: BGResults; const cutoff: TDateTime);
+
 function FormatAge(minutes: integer): string;
 
 implementation

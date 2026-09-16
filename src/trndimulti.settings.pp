@@ -56,7 +56,8 @@ interface
 
 uses
 Classes, SysUtils, Math, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls,
-Dialogs, trndi.api, trndi.api.registry, trndimulti.accounts, Graphics;
+Dialogs, trndi.api, trndi.api.registry, trndimulti.accounts, Graphics,
+trndimulti.markdown;
 
 {** Show the window modally. True when the user saved, in which case the
     store has changed and the caller should reload its accounts. }
@@ -70,7 +71,8 @@ type
     sheet: TTabSheet;
     edNick, edUser, edPass: TEdit;
     cbSys: TComboBox;
-    lbUser, lbPass, lbNote: TLabel;
+    lbUser, lbPass: TLabel;
+    lbNote: TMarkdownPane;
     rgUnit: TRadioGroup;
     btnRemove: TButton;
     info: TAccountInfo;      // As loaded; name is the identity
@@ -86,6 +88,8 @@ type
     FList: TFPList;          // of TAccountPage, in tab order
     FErased: TStringList;    // Removed with "erase settings"
     FBackends: TStringList;  // Picker entries: '' then display names
+    FSnapshot: TTimer;       // Test hook, see the constructor
+    procedure SnapshotTick(Sender: TObject);
     procedure AddPage(const a: TAccountInfo; select: boolean);
     function PageOf(sheet: TTabSheet): TAccountPage;
     function HasName(const acct: string): boolean;
@@ -109,11 +113,13 @@ const
   ROW = 26;
   NOTE_H = 4 * (ROW - 8);  // Four lines under the credential box
   // Shown under the credential of a backend that only Trndi can log in to.
-  NOTE_TRNDI_LOGIN = 'The token is captured and renewed by Trndi''s browser '
-    + 'login, so this account is set up, and logged in again when it '
-    + 'expires, in Trndi. Let one program poll it at a time: every refresh '
-    + 'revokes the previous token, so Trndi and trndi-multi on the same '
-    + 'account log each other out.';
+  // Markdown, with a link to the guide that walks through that login.
+  NOTE_TRNDI_LOGIN = 'The token is captured and renewed by [Trndi''s browser '
+    + 'login](https://github.com/slicke/trndi/blob/main/guides/CareLink.md), '
+    + 'so this account is set up, and logged in again when it expires, in '
+    + 'Trndi. Let one program poll it at a time: every refresh revokes the '
+    + 'previous token, so Trndi and trndi-multi on the same account log '
+    + 'each other out.';
 
 function EditAccounts(owner: TComponent): boolean;
 var
@@ -189,6 +195,38 @@ begin
   FPlus.Caption := ' + ';
   FPages.ActivePageIndex := 0;
   FLast := FPages.ActivePage;
+
+  // Under the snapshot test hook (see umulti) there is nobody to click:
+  // render this window beside the wall's snapshot and cancel.
+  if GetEnvironmentVariable('TRNDI_MULTI_SNAPSHOT') <> '' then
+  begin
+    FSnapshot := TTimer.Create(Self);
+    FSnapshot.Interval := 2000;
+    FSnapshot.OnTimer := @SnapshotTick;
+    FSnapshot.Enabled := true;
+  end;
+end;
+
+procedure TfAccounts.SnapshotTick(Sender: TObject);
+var
+  img: TBitmap;
+  png: TPortableNetworkGraphic;
+begin
+  FSnapshot.Enabled := false;
+  img := GetFormImage;
+  try
+    png := TPortableNetworkGraphic.Create;
+    try
+      png.Assign(img);
+      png.SaveToFile(ChangeFileExt(
+        GetEnvironmentVariable('TRNDI_MULTI_SNAPSHOT'), '.accounts.png'));
+    finally
+      png.Free;
+    end;
+  finally
+    img.Free;
+  end;
+  ModalResult := mrCancel;
 end;
 
 destructor TfAccounts.Destroy;
@@ -300,11 +338,9 @@ begin
 
   // Room for a note under the credential; SysChange fills it for a backend
   // that only Trndi can log in to (CareLink) and blanks it for the rest.
-  pg.lbNote := TLabel.Create(Self);
+  pg.lbNote := TMarkdownPane.Create(Self);
   pg.lbNote.Parent := pg.sheet;
-  pg.lbNote.AutoSize := false;
-  pg.lbNote.WordWrap := true;
-  pg.lbNote.Font.Color := clGrayText;
+  pg.lbNote.SetTheme(clBtnFace, clGrayText, 12);
   pg.lbNote.SetBounds(MARGIN, y, w, NOTE_H);
   pg.lbNote.Anchors := [akLeft, akTop, akRight];
   Inc(y, NOTE_H + 6);
@@ -428,9 +464,9 @@ begin
   // from the other, so a hidden pair is stored back as it was.
   webLogin := (cls <> nil) and cls.supportsWebLogin;
   if webLogin then
-    pg.lbNote.Caption := NOTE_TRNDI_LOGIN
+    pg.lbNote.Load(NOTE_TRNDI_LOGIN)
   else
-    pg.lbNote.Caption := '';
+    pg.lbNote.Load('');
   // Trndi stores a placeholder target so one is always present; keep the
   // store alike (the login flow overwrites it with the real name).
   if webLogin and (Trim(pg.edUser.Text) = '') then

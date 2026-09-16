@@ -56,7 +56,7 @@ The dialogs and the report are rendered by [Pixie](https://gitlab.com/retrofoxed
 | `F11` | Toggle full screen |
 | `Esc` | Leave full screen (not in kiosk mode) |
 | `Q` | Quit |
-| Right-click | Menu: _Accounts_, refresh, full screen, _Save report_, _Check for updates_, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
+| Right-click | Menu: _Accounts_, refresh, full screen, _Save report_, _Check for updates_, _About_, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
 
 | Flag | Effect |
 |------|--------|

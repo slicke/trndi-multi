@@ -64,7 +64,7 @@ Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus,
 LCLType, LCLIntf, Dialogs, Math, DateUtils, trndi.types, trndimulti.accounts,
 trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
 trndimulti.settings, trndimulti.update, trndimulti.markdown,
-trndimulti.report;
+trndimulti.report, trndimulti.about;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -98,6 +98,7 @@ type
     procedure MenuFullscreen(Sender: TObject);
     procedure MenuQuit(Sender: TObject);
     procedure MenuUpdate(Sender: TObject);
+    procedure MenuAbout(Sender: TObject);
     procedure MenuReport(Sender: TObject);
     procedure TryStartReport;
     procedure ReportDone(const fileName, err: string);
@@ -212,9 +213,13 @@ begin
   finally
     img.Free;
   end;
-  // The accounts window snapshots itself (<file>.accounts.png) and cancels.
+  // The accounts and About windows snapshot themselves (<file>.accounts.png,
+  // <file>.about.png) and close.
   if not FKiosk then
+  begin
     EditAccounts(Self);
+    ShowAbout(Self);
+  end;
   Close;
 end;
 
@@ -257,6 +262,7 @@ begin
   Item('Save report...', @MenuReport);
   Item('-', nil);
   Item('Check for updates...', @MenuUpdate);
+  Item('About Trndi Multi...', @MenuAbout);
   Item('Quit' + #9 + 'Q', @MenuQuit);
   PopupMenu := FMenu;
 end;
@@ -326,6 +332,14 @@ end;
 procedure TfMulti.MenuUpdate(Sender: TObject);
 begin
   CheckForUpdates(true);
+end;
+
+// The About window runs the check for us rather than opening a dialog of
+// its own on top of itself.
+procedure TfMulti.MenuAbout(Sender: TObject);
+begin
+  if ShowAbout(Self) then
+    CheckForUpdates(true);
 end;
 
 // Every account with a backend gets a tile. The display unit is the first

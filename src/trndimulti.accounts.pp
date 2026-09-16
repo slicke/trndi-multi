@@ -335,6 +335,10 @@ end;
 {$ENDIF}
 
 function SettingsLocation: string;
+{$IF NOT (DEFINED(WINDOWS) OR DEFINED(DARWIN))}
+var
+  home: string;
+{$ENDIF}
 begin
 {$IF DEFINED(WINDOWS)}
   Result := 'HKCU\SOFTWARE\Trndi';
@@ -342,6 +346,12 @@ begin
   Result := '~/Library/Preferences/' + MAC_PREFS_DOMAIN + '.plist';
 {$ELSE}
   Result := GetAppConfigFile(false);
+  // Home-relative, as the macOS branch above already is: this is shown in
+  // windows, and nothing that renders it can break a path across lines, so
+  // a long home directory would otherwise run off the edge.
+  home := IncludeTrailingPathDelimiter(GetUserDir);
+  if (home <> '') and (Pos(home, Result) = 1) then
+    Result := '~/' + Copy(Result, Length(home) + 1, MaxInt);
 {$ENDIF}
 end;
 

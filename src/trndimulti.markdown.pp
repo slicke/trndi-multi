@@ -53,14 +53,20 @@ unit trndimulti.markdown;
 interface
 
 uses
-Classes, Controls, Graphics, Pixie.MarkdownView;
+Classes, Controls, Graphics, Pixie.MarkdownView, Pixie.Document;
 
 type
   {** A Markdown view for a dialog: no border, links open in the browser,
       styled to sit on a given background rather than as a web page. }
   TMarkdownPane = class(TPixieMarkdownView)
   private
+    FDownX, FDownY: integer;
     procedure LinkClick(Sender: TObject; El: TObject; const Url: string);
+  protected
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
+      X, Y: integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
+      X, Y: integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     {** Colours and base size of the text. @param(extraCss) is appended
@@ -120,6 +126,33 @@ end;
 procedure TMarkdownPane.Load(const md: string);
 begin
   LoadMarkdownFromString(md);
+end;
+
+procedure TMarkdownPane.MouseDown(Button: TMouseButton; Shift: TShiftState;
+  X, Y: integer);
+begin
+  FDownX := X;
+  FDownY := Y;
+  inherited MouseDown(Button, Shift, X, Y);
+end;
+
+// Pixie starts a text selection on every press, and a pointer that moves
+// at all before the release leaves a selection behind, even an empty
+// one; the release is then taken as the end of a drag and never reaches
+// the link. A press and release within a few pixels is a click: drop
+// whatever selection it left before the view decides.
+procedure TMarkdownPane.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: integer);
+const
+  CLICK_SLOP = 4;
+begin
+  if (Button = mbLeft) and (Document <> nil) and Document.HasSelection and
+    (Abs(X - FDownX) <= CLICK_SLOP) and (Abs(Y - FDownY) <= CLICK_SLOP) then
+  begin
+    Document.ClearSelection;
+    Invalidate;
+  end;
+  inherited MouseUp(Button, Shift, X, Y);
 end;
 
 procedure TMarkdownPane.LinkClick(Sender: TObject; El: TObject;

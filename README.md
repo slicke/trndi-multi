@@ -65,7 +65,7 @@ Every push to `main` that builds green on all platforms becomes a rolling `build
 |-------|-------|
 | `trndi-multi-linux-amd64`, `trndi-multi-linux-arm64` | Needs the Qt6 LCL bindings (`libqt6pas6` on Debian/Ubuntu, `qt6pas` on Fedora) and libcurl installed. `chmod +x` and run. |
 | `trndi-multi-windows-x64.zip` | The exe, self-contained (WinHTTP for transport, the registry for settings). Unzip and run. |
-| `trndi-multi-macos-arm64.dmg` | Unsigned `Trndi Multi.app` for Apple Silicon: open the image, drag it to Applications, then clear the quarantine flag once with `xattr -c "/Applications/Trndi Multi.app"` (the README inside the image walks through it). Reads Trndi's preferences domain (`com.slicke.Trndi`), so a Trndi set up on the Mac is all it needs. |
+| `trndi-multi-macos-arm64.dmg` | Unsigned `Trndi Multi.app` for Apple Silicon: open the image, drag it to Applications, then clear the quarantine flag once in Terminal with `xattr -c "/Applications/Trndi Multi.app"`. macOS otherwise reports the app as damaged, and right-click Open does not get past that; the README inside the image walks through it. Reads Trndi's preferences domain (`com.slicke.Trndi`), so a Trndi set up on the Mac is all it needs. |
 
 ## Building
 

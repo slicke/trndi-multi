@@ -27,6 +27,10 @@ Accounts live in Trndi's settings store, and each one needs a backend before it 
 
 Changes made in Trndi show up in trndi-multi at its next start. Both programs rewrite the account list when they save, so do not have both settings windows open at once: whichever saves last wins.
 
+## First run
+
+The first start puts up the medical disclaimer, the same one Trndi shows, and waits for it to be accepted before any reading is drawn. Acceptance is stored once per install as `trndi-multi.<date>` in Trndi's settings store, at the root rather than under an account: the person at a wall display is usually not the person whose account is on it, so an account's own acceptance in Trndi (`license.<date>`) does not stand in for it. The date is bumped when the terms change materially, and a returning user is then asked to accept the updated terms once more. For a kiosk, run the program once normally before enabling `--kiosk`, or the first start waits for a click that nobody is there to give.
+
 ## How it works
 
 - **One unit for the wall.** Accounts can use mmol/L and mg/dL side by side in Trndi. Here everything is shown in the first account's unit, so the wall reads as one thing.

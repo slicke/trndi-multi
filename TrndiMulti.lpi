@@ -105,6 +105,10 @@
         <Filename Value="src/trndimulti.settings.pp"/>
         <IsPartOfProject Value="True"/>
       </Unit7>
+      <Unit8>
+        <Filename Value="src/trndimulti.terms.pp"/>
+        <IsPartOfProject Value="True"/>
+      </Unit8>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

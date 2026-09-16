@@ -57,7 +57,7 @@ cthreads, // MUST be first: fetches run on worker threads; without a thread
           // not define UNIX, hence the OR.
 {$ENDIF}
 Interfaces, // LCL widgetset
-Forms, SysUtils, trndimulti.accounts, umulti;
+Forms, SysUtils, trndimulti.accounts, trndimulti.terms, umulti;
 
 begin
   // Before anything resolves a config path: the settings file is Trndi's.
@@ -66,6 +66,10 @@ begin
   Application.Scaled := true;
   Application.Title := 'Trndi Multi';
   Application.Initialize;
+  // The medical disclaimer before any reading is drawn, as Trndi does.
+  // Declined: nothing else happens.
+  if not TermsAccepted then
+    Halt(1);
   Application.CreateForm(TfMulti, fMulti);
   Application.Run;
 end.

@@ -182,6 +182,7 @@ jobs:
         run: |
           LATEST=$(git tag | grep -E '^build-[0-9]+$' | sed 's/^build-//' | sort -n | tail -1)
           echo "num=$(( ${LATEST:-99} + 1 ))" >> "$GITHUB_OUTPUT"
+          echo "prev=${LATEST:+build-$LATEST}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
@@ -192,10 +193,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           NUM=${{ steps.ver.outputs.num }}
+          PREV=${{ steps.ver.outputs.prev }}
+          # Changelog: the commit subjects since the previous build tag.
+          # Commits land on main directly rather than through PRs, so
+          # gh's --generate-notes would come out empty; the one-line
+          # imperative subjects read well enough as a list on their own.
+          # The first release has no previous tag and lists everything.
+          LOG=$(git log --no-merges --format='- %s (%h)' "${PREV:+$PREV..}HEAD")
+          {
+            echo "## Changes${PREV:+ since $PREV}"
+            echo
+            echo "${LOG:-- (no new commits)}"
+            echo
+            echo "Automated build of ${GITHUB_SHA}. Accounts come from Trndi's settings — see README.md. Linux needs libQt6Pas (libqt6pas6 / qt6pas) and libcurl installed; the macOS dmg is unsigned, see its README.txt."
+          } > notes.md
           # No --target: tag whatever main's HEAD is at publish time, as
           # trndi-cli does; targeting $GITHUB_SHA 403s once a newer push
           # has landed.
           gh release create "build-${NUM}" \
             --title "Build ${NUM}" \
-            --notes "Automated build of ${GITHUB_SHA}. Accounts come from Trndi's settings — see README.md. Linux needs libQt6Pas (libqt6pas6 / qt6pas) and libcurl installed; the macOS dmg is unsigned, see its README.txt." \
+            --notes-file notes.md \
             dist/*/*

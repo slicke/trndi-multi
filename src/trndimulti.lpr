@@ -57,9 +57,13 @@ cthreads, // MUST be first: fetches run on worker threads; without a thread
           // not define UNIX, hence the OR.
 {$ENDIF}
 Interfaces, // LCL widgetset
-Forms, SysUtils, trndimulti.accounts, trndimulti.terms, umulti;
+Forms, SysUtils, trndimulti.accounts, trndimulti.terms, trndimulti.update,
+umulti;
 
 begin
+  // This file is recompiled on every build, so its stamp is the binary's:
+  // what a dev build is judged by against the releases.
+  LocalBuildStamp := {$I %DATE%} + ' ' + {$I %TIME%};
   // Before anything resolves a config path: the settings file is Trndi's.
   OnGetApplicationName := @TrndiAppName;
   RequireDerivedFormResource := false;

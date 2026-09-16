@@ -91,8 +91,16 @@ function NewerRelease(const json: string; out name, url: string): boolean; overl
 function NewerRelease(const json: string; out name, url, notes: string): boolean; overload;
 
 {** When this binary was built, in local time: CI's BUILD_DATE, or the
-    compile date for a local build. }
+    compile stamp of a local build (see @link(LocalBuildStamp)). }
 function BuildDateTime: TDateTime;
+
+var
+  {** A local build's compile date and time, 'yyyy/mm/dd hh:mm:ss', set by
+      the program file: that is the one unit recompiled on every build, so
+      its stamp is the binary's. A stamp taken in this unit would stand
+      still until this unit changed, and a release published the same day
+      would look newer than a dev build made after it. }
+  LocalBuildStamp: string = '';
 
 implementation
 
@@ -179,14 +187,20 @@ begin
 end;
 
 function BuildDateTime: TDateTime;
-const
-  COMPILED = {$I %DATE%}; // 'yyyy/mm/dd'
+var
+  s: string;
 begin
   if ParseISO(BUILD_DATE, Result) then
     exit;
+  // 'yyyy/mm/dd hh:mm:ss' from the program file; the time may be missing
+  // if only the date was given, and then the day starts at midnight.
+  s := LocalBuildStamp;
   try
-    Result := EncodeDate(StrToInt(Copy(COMPILED, 1, 4)),
-      StrToInt(Copy(COMPILED, 6, 2)), StrToInt(Copy(COMPILED, 9, 2)));
+    Result := EncodeDate(StrToInt(Copy(s, 1, 4)), StrToInt(Copy(s, 6, 2)),
+      StrToInt(Copy(s, 9, 2)));
+    if Length(s) >= 19 then
+      Result := Result + EncodeTime(StrToInt(Copy(s, 12, 2)),
+        StrToInt(Copy(s, 15, 2)), StrToInt(Copy(s, 18, 2)), 0);
   except
     Result := 0;
   end;

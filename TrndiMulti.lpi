@@ -72,7 +72,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="8">
+    <Units Count="10">
       <Unit0>
         <Filename Value="src/trndimulti.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -109,6 +109,14 @@
         <Filename Value="src/trndimulti.terms.pp"/>
         <IsPartOfProject Value="True"/>
       </Unit8>
+      <Unit9>
+        <Filename Value="src/trndimulti.update.pp"/>
+        <IsPartOfProject Value="True"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="src/trndimulti.buildinfo.pp"/>
+        <IsPartOfProject Value="True"/>
+      </Unit10>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

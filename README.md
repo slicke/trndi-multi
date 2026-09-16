@@ -48,7 +48,7 @@ The first start puts up the medical disclaimer, the same one Trndi shows, and wa
 | `F11` | Toggle full screen |
 | `Esc` | Leave full screen (not in kiosk mode) |
 | `Q` | Quit |
-| Right-click | Menu: _Accounts_, refresh, full screen, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
+| Right-click | Menu: _Accounts_, refresh, full screen, _Check for updates_, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
 
 | Flag | Effect |
 |------|--------|
@@ -70,6 +70,10 @@ Every push to `main` that builds green on all platforms becomes a rolling `build
 | `trndi-multi-linux-amd64`, `trndi-multi-linux-arm64` | Needs the Qt6 LCL bindings (`libqt6pas6` on Debian/Ubuntu, `qt6pas` on Fedora) and libcurl installed. `chmod +x` and run. |
 | `trndi-multi-windows-x64.zip` | The exe, self-contained (WinHTTP for transport, the registry for settings). Unzip and run. |
 | `trndi-multi-macos-arm64.dmg` | Unsigned `Trndi Multi.app` for Apple Silicon: open the image, drag it to Applications, then clear the quarantine flag once in Terminal with `xattr -c "/Applications/Trndi Multi.app"`. macOS otherwise reports the app as damaged, and right-click Open does not get past that; the README inside the image walks through it. Reads Trndi's preferences domain (`com.slicke.Trndi`), so a Trndi set up on the Mac is all it needs. |
+
+### Update check
+
+Shortly after it starts, trndi-multi asks GitHub once whether a newer `build-N` exists, the way Trndi does. If so, a dialog offers to open the download page, to be asked again next start, or to be reminded in two weeks; the snooze is stored at the root of Trndi's settings store as `trndi-multi.update.ignore`. _Check for updates_ in the right-click menu asks at once and also reports when the program is up to date. Kiosk mode never checks: nobody is at a wall display to answer the dialog. A local build has no build number and is compared by its build date instead, so it only counts as out of date once a release is published after it was compiled.
 
 ## Building
 

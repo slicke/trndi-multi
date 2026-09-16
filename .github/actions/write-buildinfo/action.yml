@@ -1,0 +1,45 @@
+name: Write buildinfo.pp
+description: >
+  Stamp src/trndimulti.buildinfo.pp with this build's number, tag, date and commit, the
+  way Trndi's own write-buildinfo action does for Trndi, so the update
+  check compares against trndi-multi's own releases.
+  Runs under bash on every platform (Git Bash on Windows).
+
+inputs:
+  build_number:
+    description: >
+      The build number: build-<N>'s N for a push to main, PR-<n> for a pull
+      request, anything else (or empty) for a dev build.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Write buildinfo unit
+      shell: bash
+      run: |
+        set -euo pipefail
+        NUM="${{ inputs.build_number }}"
+        case "$NUM" in
+          '' | dev) NUM=dev; TAG=dev ;;
+          PR-*)     TAG="pr-${NUM#PR-}" ;;
+          *)        TAG="build-${NUM}" ;;
+        esac
+        BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+        BRANCH="${BRANCH//\'/\'\'}"
+        cat > src/trndimulti.buildinfo.pp <<PAS
+        unit trndimulti.buildinfo;
+        {\$mode objfpc}{\$H+}
+        interface
+        const
+          BUILD_NUMBER = '${NUM}';
+          BUILD_TAG    = '${TAG}';
+          BUILD_DATE   = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';
+          GIT_SHA      = '$(git rev-parse --short HEAD)';
+          GIT_BRANCH   = '${BRANCH}';
+          CI           = True;
+        implementation
+        end.
+        PAS
+        cat src/trndimulti.buildinfo.pp

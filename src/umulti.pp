@@ -42,8 +42,13 @@
   refills the window on resize, polled on each account's own schedule.
 
   Keys: F5 refetches every account, F11 toggles full screen, Escape leaves
-  it, Q quits. Right-click opens a menu with the accounts window and the
-  same actions; a kiosk has no menu, its passwords are not one click away.
+  it, Q quits. Right-click opens a menu with the accounts window, an update
+  check and the same actions; a kiosk has no menu, its passwords are not
+  one click away.
+
+  Shortly after the window is shown it asks GitHub once whether a newer
+  build exists (trndimulti.update), except in kiosk mode, where nobody is
+  there to answer the dialog.
 
   Full screen adds a clock strip above the tiles: a wall display has no
   panel or taskbar to tell the time.
@@ -58,7 +63,7 @@ uses
 Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus,
 LCLType, Math, DateUtils, trndi.types, trndimulti.accounts,
 trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
-trndimulti.settings;
+trndimulti.settings, trndimulti.update;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -77,6 +82,7 @@ type
     FKiosk: boolean;
     FStartFullscreen: boolean;
     FSnapshotTimer: TTimer;
+    FUpdateTimer: TTimer;
     FClock: TClockBar;
     FMenu: TPopupMenu;
     procedure BuildMenu;
@@ -86,7 +92,9 @@ type
     procedure MenuRefresh(Sender: TObject);
     procedure MenuFullscreen(Sender: TObject);
     procedure MenuQuit(Sender: TObject);
+    procedure MenuUpdate(Sender: TObject);
     procedure SnapshotTick(Sender: TObject);
+    procedure UpdateTick(Sender: TObject);
     procedure LayoutTiles;
     procedure TimerTick(Sender: TObject);
     procedure FetchDone(state: TAccountState);
@@ -188,6 +196,7 @@ end;
 destructor TfMulti.Destroy;
 begin
   FTimer.Enabled := false;
+  AbandonUpdateCheck;
   if FKiosk then
     SetKeepAwake(false);
   ClearAccounts;
@@ -211,6 +220,7 @@ begin
   Item('Refresh now' + #9 + 'F5', @MenuRefresh);
   Item('Full screen' + #9 + 'F11', @MenuFullscreen);
   Item('-', nil);
+  Item('Check for updates...', @MenuUpdate);
   Item('Quit' + #9 + 'Q', @MenuQuit);
   PopupMenu := FMenu;
 end;
@@ -268,6 +278,11 @@ end;
 procedure TfMulti.MenuQuit(Sender: TObject);
 begin
   Close;
+end;
+
+procedure TfMulti.MenuUpdate(Sender: TObject);
+begin
+  CheckForUpdates(true);
 end;
 
 // Every account with a backend gets a tile. The display unit is the first
@@ -389,6 +404,21 @@ begin
     FKioskTimer.OnTimer := @KioskApply;
     FKioskTimer.Enabled := true;
   end;
+  // The update check is deferred the same way, and a little longer, so the
+  // first paint and the first fetches are not behind it. One-shot.
+  if (not FKiosk) and (FUpdateTimer = nil) then
+  begin
+    FUpdateTimer := TTimer.Create(Self);
+    FUpdateTimer.Interval := 1500;
+    FUpdateTimer.OnTimer := @UpdateTick;
+    FUpdateTimer.Enabled := true;
+  end;
+end;
+
+procedure TfMulti.UpdateTick(Sender: TObject);
+begin
+  FUpdateTimer.Enabled := false;
+  CheckForUpdates(false);
 end;
 
 procedure TfMulti.KioskApply(Sender: TObject);

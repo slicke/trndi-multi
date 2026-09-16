@@ -5,14 +5,49 @@ on:
     branches: [main]
   pull_request:
 
-# One job per platform, each ending in an artifact named after the platform;
-# publish then turns every push to main that built green into a rolling
-# build-<N> release, as trndi-cli does. The Lazarus toolchain comes from the
-# same places as Trndi's own CI: the pinned SourceForge .debs through the
-# vendored setup-lazarus action on Linux, the Lazarus installer on Windows
-# and MacPorts on macOS.
+# Pushes to main run one at a time: the build number is decided before the
+# binaries are built (they carry it, for the update check), so two runs
+# deciding at once would both claim the same number and the later one would
+# fail to tag. Pull requests are grouped per PR and superseded by a new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The version job picks the number first; then one job per platform, each
+# ending in an artifact named after the platform; publish then turns every
+# push to main that built green into a rolling build-<N> release, as
+# trndi-cli does. The Lazarus toolchain comes from the same places as
+# Trndi's own CI: the pinned SourceForge .debs through the vendored
+# setup-lazarus action on Linux, the Lazarus installer on Windows and
+# MacPorts on macOS.
 jobs:
+  # ===================== VERSION =====================
+  # The number the binaries are stamped with (src/trndimulti.buildinfo.pp, through the
+  # write-buildinfo action) and the release is tagged with: next after the
+  # highest build-<N> tag, from 100, for a push to main; PR-<n> for a pull
+  # request. `prev` is the tag before it, for the release notes.
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      num: ${{ steps.ver.outputs.num }}
+      prev: ${{ steps.ver.outputs.prev }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history *and* tags, for the build counter
+      - id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "num=PR-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LATEST=$(git tag | grep -E '^build-[0-9]+$' | sed 's/^build-//' | sort -n | tail -1)
+          echo "num=$(( ${LATEST:-99} + 1 ))" >> "$GITHUB_OUTPUT"
+          echo "prev=${LATEST:+build-$LATEST}" >> "$GITHUB_OUTPUT"
+
   linux:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +79,10 @@ jobs:
           fpc_src_url: ${{ matrix.fpc_src_url }}
           laz_url: ${{ matrix.laz_url }}
 
+      - uses: ./.github/actions/write-buildinfo
+        with:
+          build_number: ${{ needs.version.outputs.num }}
+
       - name: Build
         run: make
 
@@ -67,6 +106,7 @@ jobs:
           path: trndi-multi-linux-${{ matrix.arch }}
 
   windows:
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -92,6 +132,10 @@ jobs:
           }
           Start-Process '.\lazarus.exe' -ArgumentList '/VERYSILENT','/SP-','/NORESTART','/DIR=C:\Lazarus' -Wait
 
+      - uses: ./.github/actions/write-buildinfo
+        with:
+          build_number: ${{ needs.version.outputs.num }}
+
       - name: Build
         shell: pwsh
         run: .\make.ps1
@@ -111,6 +155,7 @@ jobs:
           path: trndi-multi-windows-x64.zip
 
   macos:
+    needs: version
     runs-on: macos-14
     timeout-minutes: 120
     steps:
@@ -145,9 +190,15 @@ jobs:
       # "Trndi Multi.app" (icon and DMG background from the vendored Trndi)
       # and packs that into a drag-to-Applications .dmg, as Trndi's CI does.
       # Runs on PRs too, so packaging changes get tested; only main publishes.
+      - uses: ./.github/actions/write-buildinfo
+        with:
+          build_number: ${{ needs.version.outputs.num }}
+
+      # CFBundleVersion must be numeric, so a PR build falls back to the run
+      # number there; the binary itself still says PR-<n>.
       - name: Build and package
         env:
-          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_NUMBER: ${{ github.event_name == 'push' && needs.version.outputs.num || github.run_number }}
         run: |
           set -euo pipefail
           export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
@@ -166,23 +217,14 @@ jobs:
   # releases/latest/download/<asset>, so the asset names above are an API.
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [linux, windows, macos]
+    needs: [version, linux, windows, macos]
     runs-on: ubuntu-latest
-    # Two quick pushes must not race the same build number.
-    concurrency: release
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history *and* tags, for the build counter
-
-      - name: Next build number
-        id: ver
-        run: |
-          LATEST=$(git tag | grep -E '^build-[0-9]+$' | sed 's/^build-//' | sort -n | tail -1)
-          echo "num=$(( ${LATEST:-99} + 1 ))" >> "$GITHUB_OUTPUT"
-          echo "prev=${LATEST:+build-$LATEST}" >> "$GITHUB_OUTPUT"
+          fetch-depth: 0   # full history, for the changelog
 
       - uses: actions/download-artifact@v4
         with:
@@ -192,8 +234,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NUM=${{ steps.ver.outputs.num }}
-          PREV=${{ steps.ver.outputs.prev }}
+          NUM=${{ needs.version.outputs.num }}
+          PREV=${{ needs.version.outputs.prev }}
           # Changelog: the commit subjects since the previous build tag.
           # Commits land on main directly rather than through PRs, so
           # gh's --generate-notes would come out empty; the one-line

@@ -187,8 +187,9 @@ jobs:
 
       # A bare Cocoa binary has no bundle to be activated through, so the
       # window never comes to the front. dist/macos.sh wraps it in
-      # "Trndi Multi.app" (icon and DMG background from the vendored Trndi)
-      # and packs that into a drag-to-Applications .dmg, as Trndi's CI does.
+      # "Trndi Multi.app" (Finder icon from the committed TrndiMulti.png, DMG
+      # background from the vendored Trndi) and packs that into a
+      # drag-to-Applications .dmg, as Trndi's CI does.
       # Runs on PRs too, so packaging changes get tested; only main publishes.
       - uses: ./.github/actions/write-buildinfo
         with:

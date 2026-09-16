@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Part of trndi-multi - https://github.com/slicke/trndi-multi
+# Copyright (c) Björn Lindh
+#
+# Desktop entry for `make install`; Exec resolves through PATH. Icon names
+# the hicolor icon the same target installs (trndi-multi.png, from the
+# artwork the binary's own icon is made of), and StartupWMClass matches the
+# executable name the Qt and GTK widgetsets put on the window, so a running
+# wall display is shown under this entry rather than as a nameless window.
+[Desktop Entry]
+Name=Trndi Multi
+GenericName=CGM Wall Display
+Comment=Every Trndi account in one window
+Exec=trndi-multi
+Icon=trndi-multi
+Type=Application
+Categories=Utility;
+StartupWMClass=trndi-multi
+Keywords=trndi;cgm;glucose;monitoring;diabetes;

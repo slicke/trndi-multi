@@ -4,3 +4,8 @@ backup/
 *.lps
 *.compiled
 trndi.log
+
+# lazbuild writes these beside the main source from TrndiMulti.ico: the
+# project resource that carries MAINICON, and its copy of the icon.
+src/trndimulti.res
+src/trndimulti.ico

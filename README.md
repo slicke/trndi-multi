@@ -1,5 +1,7 @@
 [![Build](https://github.com/slicke/trndi-multi/actions/workflows/build.yml/badge.svg)](https://github.com/slicke/trndi-multi/actions/workflows/build.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
+<img src="TrndiMulti.png" alt="" width="120" align="right">
+
 # trndi-multi - every Trndi account in one window
 
 ## A wall display for households and caregivers who follow more than one person
@@ -98,6 +100,14 @@ make install    # to /usr/local/bin
 `make WIDGETSET=gtk2` (or any widgetset your Lazarus has) picks another LCL backend; the Makefile defaults to qt6 on Linux and BSD, cocoa on macOS. Windows builds with `.\make.ps1` (win32 widgetset).
 
 The debug build knows Trndi's synthetic `API_D_*` backends, which is how the screenshot above was made: a scratch `Trndi.cfg` under `XDG_CONFIG_HOME` with six accounts pointed at them.
+
+`make install` on Linux and BSD also puts a desktop entry and a 256px hicolor icon in place, so the program turns up in the launcher under its own name and icon.
+
+### Artwork
+
+There is one piece of artwork, `trndi-multi.png`, and two files derived from it: `TrndiMulti.png`, the mark trimmed out of its transparent margin and centred on a square canvas, and `TrndiMulti.ico`, the multi-size form of that. lazbuild embeds the `.ico` as the binary's `MAINICON` resource, which is what the window frame, the taskbar and the Dock show on every platform, and what the About window, the empty wall and the PDF report read back out to put the same mark inside the document (`src/trndimulti.branding.pp`). The macOS bundle's Finder icon and the Linux hicolor icon come from the `.png`.
+
+Both derived files are committed, so an ordinary build needs nothing extra. After changing the artwork, run `make icon` (`.\make.ps1 icon` on Windows), which needs ImageMagick, and commit what it writes. `make icon LOGO=other.png` builds them from a different master.
 
 ## Not (yet) here
 

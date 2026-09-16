@@ -1,8 +1,9 @@
 #!/bin/bash
 # Package bin/trndi-multi as "Trndi Multi.app" and wrap it in a .dmg, the way
 # Trndi's dist/macos.sh does. Run from dist/ after `gmake`; needs create-dmg
-# (MacPorts: `port install create-dmg`). The icon and the DMG background come
-# from the vendored Trndi submodule, so there is no artwork to keep in sync.
+# (MacPorts: `port install create-dmg`). The icon is this program's own
+# artwork; the DMG background is just the arrow between the two icon slots
+# and still comes from the vendored Trndi submodule.
 #
 #   VERSION      CFBundleShortVersionString (default 1.0)
 #   BUILD_NUMBER CFBundleVersion            (default 1)
@@ -26,10 +27,12 @@ cp "${BIN}" "${APP}/Contents/MacOS/trndi-multi"
 # GPLv3 sections 4 and 6: the licence travels with the binary.
 cp ../LICENSE "${APP}/Contents/Resources/LICENSE.txt"
 
-# Dock/Finder icon: Trndi's macOS artwork, as an .icns built with the
-# Apple-standard iconset names so iconutil accepts it.
-ICON_SRC="${TRNDI}/Trndi-macos.png"
-[ -f "${ICON_SRC}" ] || ICON_SRC="${TRNDI}/Trndi.png"
+# Finder icon: TrndiMulti.png, the square app icon `make icon` normalises
+# out of logo.png, as an .icns built with the Apple-standard iconset names
+# so iconutil accepts it. The icon of the *running* app is the binary's
+# MAINICON resource, which the LCL's Cocoa widgetset pushes to the Dock at
+# startup; that is built from the same artwork, so the two agree.
+ICON_SRC="../TrndiMulti.png"
 ICON_PLIST=""
 if [ -f "${ICON_SRC}" ]; then
   ICONSET="macos/TrndiMulti.iconset"
@@ -43,7 +46,7 @@ if [ -f "${ICON_SRC}" ]; then
   iconutil -c icns "${ICONSET}" -o "${APP}/Contents/Resources/TrndiMulti.icns"
   ICON_PLIST="  <key>CFBundleIconFile</key><string>TrndiMulti.icns</string>"
 else
-  echo "WARN: no icon source under ${TRNDI}; bundle gets the generic icon" >&2
+  echo "WARN: ${ICON_SRC} not found; bundle gets the generic icon" >&2
 fi
 
 # Unquoted heredoc: VERSION, BUILD_NUMBER and ICON_PLIST expand.

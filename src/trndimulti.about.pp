@@ -68,7 +68,7 @@ implementation
 uses
 SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Graphics, InterfaceBase,
 LCLPlatformDef, LCLVersion, trndimulti.markdown, trndimulti.accounts,
-trndimulti.buildinfo, trndimulti.update;
+trndimulti.branding, trndimulti.buildinfo, trndimulti.update;
 
 const
   PROJECT_URL = 'https://github.com/slicke/trndi-multi';
@@ -113,13 +113,21 @@ begin
 end;
 
 function AboutText: string;
+var
+  logo: string;
 begin
+  // The same mark the window frame and the taskbar show, out of this
+  // binary's own icon; a build whose icon could not be read simply has
+  // the heading without it.
+  logo := LogoDataUri;
+  if logo <> '' then
+    logo := '<img class="logo" src="' + logo + '">';
   // The heading block is one raw HTML line: a blank line inside it would
   // end the block and leave the rest as literal text.
   Result :=
-    '<div class="head"><h1>Trndi Multi</h1>' +
-    '<p class="sub">Every Trndi account in one window.</p>' +
-    '<p class="env">' + BuildLine + '<br>' + ToolchainLine + '</p></div>' +
+    '<div class="head">' + logo + '<div><h1>Trndi Multi</h1>' +
+    '<p class="sub">Every Trndi account in one window.</p></div></div>' +
+    '<p class="env">' + BuildLine + '<br>' + ToolchainLine + '</p>' +
     LineEnding + LineEnding +
     '> **Not a medical device.** A reading may be delayed, wrong or ' +
     'missing, and a tile that stops updating may not be noticed: this is ' +
@@ -184,8 +192,10 @@ begin
   pane := TMarkdownPane.Create(Self);
   pane.Parent := Self;
   pane.SetTheme(clBtnFace, clBtnText, 13,
+    '.head { display: flex; align-items: center; margin: 0 0 12px; }' +
+    '.logo { width: 56px; height: 56px; margin-right: 14px; }' +
     'h1 { font-size: 1.7em; margin: 0 0 1px; }' +
-    '.sub { margin: 0 0 10px; }' +
+    '.sub { margin: 0; }' +
     '.env { color: ' + CssColor(clGrayText) + '; font-size: 0.85em; ' +
     'line-height: 1.5; margin: 0 0 14px; }' +
     'blockquote { margin: 0 0 12px; padding: 0 0 0 10px; ' +

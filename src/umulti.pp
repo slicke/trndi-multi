@@ -64,7 +64,7 @@ Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus,
 LCLType, LCLIntf, Dialogs, Math, DateUtils, trndi.types, trndimulti.accounts,
 trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
 trndimulti.settings, trndimulti.update, trndimulti.markdown,
-trndimulti.report, trndimulti.about;
+trndimulti.report, trndimulti.about, trndimulti.branding;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -350,6 +350,7 @@ var
   accounts: TAccountList;
   a: TAccountInfo;
   n: integer;
+  head: string;
 begin
   accounts := ListAccounts;
   n := 0;
@@ -379,19 +380,27 @@ begin
     FEmpty.Align := alClient;
     FEmpty.PopupMenu := FMenu;
     FEmpty.SetTheme(BackgroundColor, $C8C8C8, 16,
-      'body { text-align: center; padding: 12% 12% 0; }' +
+      'body { text-align: center; padding: 10% 12% 0; }' +
+      '.logo { width: 112px; height: 112px; margin-bottom: 14px; }' +
       'h2 { color: #FFFFFF; font-weight: normal; font-size: 1.6em; }' +
       'p { margin-bottom: 1em; }');
+    // A blank wall is what a display shows for as long as nobody has set an
+    // account up, so it says whose program is standing there: the logo out
+    // of this binary's icon (see trndimulti.branding), over the heading.
+    head := LogoDataUri;
+    if head <> '' then
+      head := '<img class="logo" src="' + head + '">' + LineEnding + LineEnding;
+    head := head + '## No Trndi accounts set up';
     if FKiosk then
       FEmpty.Load(
-        '## No Trndi accounts set up' + LineEnding + LineEnding +
+        head + LineEnding + LineEnding +
         'Accounts and their backends are managed in [Trndi](' + TRNDI_URL +
         ')''s settings window, or in this program''s Accounts window ' +
         'outside kiosk mode.' + LineEnding + LineEnding +
         'Settings: `' + SettingsLocation + '`')
     else
       FEmpty.Load(
-        '## No Trndi accounts set up' + LineEnding + LineEnding +
+        head + LineEnding + LineEnding +
         'Right-click here and choose **Accounts** to add them, or set them ' +
         'up in [Trndi](' + TRNDI_URL + '): both use the same settings. ' +
         'The walkthrough is in [Trndi''s multi-user guide](' + GUIDE_URL + ').' +

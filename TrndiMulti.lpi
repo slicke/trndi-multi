@@ -12,6 +12,9 @@
       </Flags>
       <SessionStorage Value="None"/>
       <Title Value="Trndi Multi"/>
+      <!-- 0 = not empty: lazbuild reads TrndiMulti.ico (beside this file) and
+           embeds it as the MAINICON resource. -->
+      <Icon Value="0"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
     </General>
@@ -72,7 +75,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="14">
+    <Units Count="15">
       <Unit0>
         <Filename Value="src/trndimulti.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -129,6 +132,10 @@
         <Filename Value="src/trndimulti.about.pp"/>
         <IsPartOfProject Value="True"/>
       </Unit13>
+      <Unit14>
+        <Filename Value="src/trndimulti.branding.pp"/>
+        <IsPartOfProject Value="True"/>
+      </Unit14>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

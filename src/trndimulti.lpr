@@ -50,6 +50,13 @@ program trndimulti;
 
 {$mode objfpc}{$H+}
 
+// The window, taskbar and Dock icon: lazbuild turns TrndiMulti.ico (next to
+// the .lpi, made from the artwork by `make icon`) into the MAINICON resource,
+// and the LCL loads that into Application.Icon at startup on every
+// widgetset. trndimulti.branding reads the same resource back out for the
+// logo the About window and the report show.
+{$R *.res}
+
 uses
 {$IF DEFINED(UNIX) OR DEFINED(HAIKU)}
 cthreads, // MUST be first: fetches run on worker threads; without a thread
@@ -57,8 +64,8 @@ cthreads, // MUST be first: fetches run on worker threads; without a thread
           // not define UNIX, hence the OR.
 {$ENDIF}
 Interfaces, // LCL widgetset
-Forms, SysUtils, trndimulti.accounts, trndimulti.terms, trndimulti.update,
-umulti;
+Forms, SysUtils, trndimulti.accounts, trndimulti.branding, trndimulti.terms,
+trndimulti.update, umulti;
 
 begin
   // This file is recompiled on every build, so its stamp is the binary's:
@@ -70,6 +77,9 @@ begin
   Application.Scaled := true;
   Application.Title := 'Trndi Multi';
   Application.Initialize;
+  // Initialize is what loads MAINICON into Application.Icon; take the logo
+  // out of it here, on the main thread, before the report's worker asks.
+  PrepareLogo;
   // The medical disclaimer before any reading is drawn, as Trndi does.
   // Declined: nothing else happens.
   if not TermsAccepted then

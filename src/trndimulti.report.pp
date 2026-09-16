@@ -116,7 +116,8 @@ function ReportHtml(const sections: TReportSections; u: BGUnit;
 implementation
 
 uses
-Math, StrUtils, DateUtils, base64, trndimulti.state, trndimulti.buildinfo, Pixie.PdfExport;
+Math, StrUtils, DateUtils, base64, trndimulti.state, trndimulti.branding,
+trndimulti.buildinfo, Pixie.PdfExport;
 
 const
   // The tile palette, as CSS.
@@ -591,6 +592,8 @@ const
     'body { font-family: "DejaVu Sans", "Liberation Sans", "Noto Sans", ' +
     '"Segoe UI", Arial, Helvetica, sans-serif; font-size: 10.5pt; ' +
     'color: #1F2328; line-height: 1.35; }' +
+    '.head { display: flex; align-items: center; }' +
+    '.logo { width: 34pt; height: 34pt; margin-right: 9pt; }' +
     'h1 { font-size: 20pt; margin: 0 0 2pt; }' +
     'h2 { font-size: 15pt; margin: 0 0 2pt; }' +
     '.meta { color: #666666; font-size: 9pt; margin-bottom: 8pt; }' +
@@ -621,7 +624,7 @@ const
     'color: #666666; font-size: 8.5pt; }';
 var
   i: integer;
-  build: string;
+  build, logo: string;
 begin
   {$PUSH}{$WARN 6018 OFF}
   if BUILD_NUMBER = 'dev' then
@@ -629,12 +632,20 @@ begin
   else
     build := 'build ' + BUILD_NUMBER;
   {$POP}
+  // The program's own mark on its paperwork, taken from the binary's icon
+  // (see trndimulti.branding). A PNG rather than the SVG the chart goes in
+  // as: the artwork is a bitmap, and Pixie's PDF canvas embeds it as one.
+  logo := LogoDataUri;
+  if logo <> '' then
+    logo := '<img class="logo" src="' + logo + '">';
   Result := '<!DOCTYPE html><html><head><meta charset="utf-8">' +
     '<title>Trndi Multi report</title><style>' + CSS + '</style></head><body>' +
+    '<div class="head">' + logo + '<div>' +
     '<h1>Trndi Multi report</h1>' +
     '<div class="meta">The last ' + IntToStr(REPORT_HOURS) + ' hours, ' +
     Stamp(fromT) + ' to ' + Stamp(toT) + ', in ' + BG_UNIT_NAMES[u] +
-    '. Generated ' + Stamp(toT) + ' by trndi-multi (' + build + ').</div>';
+    '. Generated ' + Stamp(toT) + ' by trndi-multi (' + build + ').</div>' +
+    '</div></div>';
   for i := 0 to High(sections) do
     Result := Result + SectionHtml(sections[i], u, fromT, toT);
   Result := Result + '<div class="foot">Not a medical device. The readings ' +

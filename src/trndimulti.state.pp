@@ -64,9 +64,19 @@ const
       one a quarter hour, whatever the backend reports as its interval. }
   POLL_MIN_MINUTES = 1;
   POLL_MAX_MINUTES = 15;
+  {** How a stale reading escalates, in minutes since it was taken: the
+      same steps as Trndi's status card. Past @link(STALE_LATE_MINUTES) an
+      outage is more than a missed upload; past @link(STALE_LOST_MINUTES)
+      the sensor link is likely gone and someone should look at the phone. }
+  STALE_LATE_MINUTES = 30;
+  STALE_LOST_MINUTES = 60;
 
 type
   TAccountState = class;
+
+  {** How old a stale reading is: not stale, or one of the three steps
+      above. }
+  TStaleStage = (ssFresh, ssDelayed, ssLate, ssLost);
 
   {** Called on the main thread when a fetch for @param(state) has finished,
       whatever its outcome. }
@@ -105,6 +115,8 @@ type
         stop treating it as current. Recomputed on every call, since a
         reading ages between fetches. }
     function IsStale: boolean;
+    {** @link(IsStale) graded by age; ssFresh when not stale. }
+    function StaleStage: TStaleStage;
   end;
 
   {** One fetch: connect if not yet connected, then the current reading and
@@ -129,7 +141,29 @@ type
 {** Start a fetch for @param(state) unless one is already running. }
 procedure StartFetch(state: TAccountState; onDone: TStateEvent);
 
+{** An age in minutes as people say it: "7 min", "1 h 5 min", "2 h",
+    "1 d 3 h". }
+function FormatAge(minutes: integer): string;
+
 implementation
+
+function FormatAge(minutes: integer): string;
+var
+  m: integer;
+begin
+  m := Max(0, minutes);
+  if m >= MinsPerDay then
+    Result := Format('%d d %d h', [m div MinsPerDay, (m mod MinsPerDay) div 60])
+  else if m >= 60 then
+  begin
+    if m mod 60 = 0 then
+      Result := Format('%d h', [m div 60])
+    else
+      Result := Format('%d h %d min', [m div 60, m mod 60]);
+  end
+  else
+    Result := Format('%d min', [m]);
+end;
 
 {------------------------------------------------------------------------------
   TAccountState
@@ -191,6 +225,21 @@ function TAccountState.IsStale: boolean;
 begin
   Result := haveCurrent and (stale or
     (AgeMinutes > Max(10, 2 * IntervalMinutes + 2)));
+end;
+
+function TAccountState.StaleStage: TStaleStage;
+var
+  age: integer;
+begin
+  if not IsStale then
+    exit(ssFresh);
+  age := AgeMinutes;
+  if age >= STALE_LOST_MINUTES then
+    Result := ssLost
+  else if age >= STALE_LATE_MINUTES then
+    Result := ssLate
+  else
+    Result := ssDelayed;
 end;
 
 {------------------------------------------------------------------------------

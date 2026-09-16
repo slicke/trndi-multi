@@ -89,6 +89,14 @@ const
   COL_LOW = $B4142C;
   COL_NONE = $45454B;
   COL_BACK = $141418;
+  // A stale tile drifts from its range colour towards this slate as the
+  // reading ages: Trndi's neutral for an outage, and bluer than COL_NONE so
+  // "lost the sensor" and "never had one" stay apart. The stage colours are
+  // for text on that slate — warm, but never a range colour, so a tile that
+  // has gone quiet is not read as a low from across the room.
+  COL_STALE = $404A5C;
+  COL_STALE_LATE = $F2C94C;
+  COL_STALE_LOST = $FF9E8A;
 
 // The constants above read as RGB hex; TColor is BGR.
 function RGB(hex: longint): TColor;
@@ -251,24 +259,35 @@ var
   r: TRect;
   h, w, pad, x, y, vh, ah, valW, arrowW, age: integer;
   scale: double;
-  bg: TColor;
+  bg, ink: TColor;
   s, arrow, footer: string;
   style: TTextStyle;
   box: TRect;
+  stage: TStaleStage;
 begin
   r := ClientRect;
   h := r.Bottom - r.Top;
   w := r.Right - r.Left;
   pad := Max(6, h div 30);
 
-  // Background by range; grey without a reading, dimmed when the reading is
-  // old, so a tile that stopped updating reads as such from across the room.
+  // Background by range; grey without a reading. A stale reading fades the
+  // range colour towards slate, the more the older it is: a tile that went
+  // quiet a few minutes ago still hints at where it was, one that has been
+  // silent an hour says only that it is silent. Nobody should act on a
+  // two-hour-old "high".
+  stage := ssFresh;
+  age := -1;
   if (FState = nil) or (not FState.haveCurrent) then
     bg := RGB(COL_NONE)
-  else if FState.IsStale then
-    bg := Mix(LevelColor(FState.current.level), RGB(COL_NONE), 0.6)
   else
+  begin
+    stage := FState.StaleStage;
+    age := FState.AgeMinutes;
     bg := LevelColor(FState.current.level);
+    if stage <> ssFresh then
+      bg := Mix(bg, RGB(COL_STALE),
+        0.6 + 0.3 * EnsureRange(age / STALE_LOST_MINUTES, 0, 1));
+  end;
   Canvas.Brush.Style := bsSolid;
   Canvas.Brush.Color := bg;
   Canvas.FillRect(r);
@@ -311,33 +330,60 @@ begin
     end;
     y := r.Top + Round(h * 0.16) + (Max(24, Round(h * 0.40)) - vh) div 2;
     x := r.Left + (w - valW - arrowW - pad) div 2;
+    // A stale value and its arrow are the last known, not the current:
+    // drawn faded so the eye does not take them for a reading.
+    if stage <> ssFresh then
+      Canvas.Font.Color := Mix(clWhite, bg, 0.3);
     Canvas.Font.Height := -vh;
     Canvas.TextOut(x, y, s);
     Canvas.Font.Height := -ah;
     Canvas.TextOut(x + valW + pad, y + Round((vh - ah) * 0.55), arrow);
+    Canvas.Font.Color := clWhite;
 
-    // Delta and unit.
+    // Delta and unit — or, for a stale reading, how long it has been since
+    // anything came in, in the same place and size: the delta of a reading
+    // from an hour ago is not news, the silence is. The line warms with
+    // Trndi's stages, amber when late and red-tinted once the link is
+    // likely lost, so an outage that needs a hand escalates on its own.
     Canvas.Font.Style := [];
     Canvas.Font.Height := -Max(11, Round(h * 0.09));
-    if FState.current.deltaEmpty then
-      s := BG_UNIT_NAMES[FUnit]
+    if stage = ssFresh then
+    begin
+      if FState.current.deltaEmpty then
+        s := BG_UNIT_NAMES[FUnit]
+      else
+        s := FState.current.format(FUnit, BG_MSG_SIG_SHORT, BGDelta) + '  ' +
+          BG_UNIT_NAMES[FUnit];
+    end
     else
-      s := FState.current.format(FUnit, BG_MSG_SIG_SHORT, BGDelta) + '  ' +
-        BG_UNIT_NAMES[FUnit];
+    begin
+      if age < 1 then
+        s := 'No new data'
+      else
+        s := 'No data for ' + FormatAge(age);
+      case stage of
+        ssLate: ink := RGB(COL_STALE_LATE);
+        ssLost: ink := RGB(COL_STALE_LOST);
+      else
+        ink := clWhite;
+      end;
+      Canvas.Font.Color := ink;
+      if stage <> ssDelayed then
+        Canvas.Font.Style := [fsBold];
+    end;
     DrawText(r.Left, r.Top + Round(h * 0.57), s, taCenter, w);
+    Canvas.Font.Color := clWhite;
+    Canvas.Font.Style := [];
 
     DrawSpark(Rect(r.Left + pad, r.Top + Round(h * 0.68), r.Right - pad,
       r.Top + Round(h * 0.86)), bg);
 
     // Footer: when the reading is from and how old that makes it.
-    age := FState.AgeMinutes;
     footer := FormatDateTime('hh:nn', FState.current.date);
     if age < 1 then
       footer := footer + '  ·  now'
     else
-      footer := footer + Format('  ·  %d min', [age]);
-    if FState.IsStale then
-      footer := 'stale  ·  ' + footer;
+      footer := footer + '  ·  ' + FormatAge(age);
     Canvas.Font.Height := -Max(10, Round(h * 0.075));
     DrawText(r.Left + pad, r.Bottom - pad - Canvas.TextHeight(footer), footer,
       taLeftJustify);

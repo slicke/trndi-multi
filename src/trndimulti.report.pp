@@ -117,16 +117,9 @@ implementation
 
 uses
 Math, StrUtils, DateUtils, base64, trndimulti.state, trndimulti.branding,
-trndimulti.buildinfo, Pixie.PdfExport;
+trndimulti.buildinfo, trndimulti.tile, Pixie.PdfExport;
 
 const
-  // The tile palette, as CSS.
-  CSS_RANGE = '#2E7D32';
-  CSS_RANGE_HI = '#C99500';
-  CSS_RANGE_LO = '#0A6FA8';
-  CSS_HIGH = '#C43C1E';
-  CSS_LOW = '#B4142C';
-  CSS_NONE = '#45454B';
   // Dexcom Share's hard cap on one history request.
   DEXCOM_MAX_COUNT = 288;
 
@@ -222,18 +215,6 @@ begin
     Result := BGRangeLO
   else
     Result := BGRange;
-end;
-
-function LevelCss(lvl: BGValLevel): string;
-begin
-  case lvl of
-    BGHigh: Result := CSS_HIGH;
-    BGLOW: Result := CSS_LOW;
-    BGRangeHI: Result := CSS_RANGE_HI;
-    BGRangeLO: Result := CSS_RANGE_LO;
-  else
-    Result := CSS_RANGE;
-  end;
 end;
 
 function HasTarget(const s: TReportSection): boolean;

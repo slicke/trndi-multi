@@ -64,7 +64,8 @@ Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus,
 LCLType, LCLIntf, Dialogs, Math, DateUtils, trndi.types, trndimulti.accounts,
 trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
 trndimulti.settings, trndimulti.update, trndimulti.markdown,
-trndimulti.report, trndimulti.about, trndimulti.branding, trndimulti.ontop;
+trndimulti.report, trndimulti.about, trndimulti.branding, trndimulti.ontop,
+trndimulti.detail;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -103,6 +104,7 @@ type
     procedure MenuUpdate(Sender: TObject);
     procedure MenuAbout(Sender: TObject);
     procedure MenuReport(Sender: TObject);
+    procedure TileClick(Sender: TObject);
     procedure TryStartReport;
     procedure ReportDone(const fileName, err: string);
     procedure SnapshotTick(Sender: TObject);
@@ -219,12 +221,15 @@ begin
   finally
     img.Free;
   end;
-  // The accounts and About windows snapshot themselves (<file>.accounts.png,
-  // <file>.about.png) and close.
+  // The accounts, About and detail windows snapshot themselves
+  // (<file>.accounts.png, <file>.about.png, <file>.detail.png) and close;
+  // the detail window is the first account's.
   if not FKiosk then
   begin
     EditAccounts(Self);
     ShowAbout(Self);
+    if Length(FStates) > 0 then
+      ShowDetail(Self, FStates[0], FUnit);
   end;
   Close;
 end;
@@ -372,6 +377,12 @@ begin
     CheckForUpdates(true);
 end;
 
+procedure TfMulti.TileClick(Sender: TObject);
+begin
+  if Sender is TAccountTile then
+    ShowDetail(Self, TAccountTile(Sender).State, FUnit);
+end;
+
 // Every account with a backend gets a tile. The display unit is the first
 // such account's: a household can have mmol/L and mg/dL accounts side by
 // side, and one unit across the wall is easier to read than two.
@@ -400,6 +411,14 @@ begin
       FTiles[n].PopupMenu := FMenu;
       FTiles[n].State := FStates[n];
       FTiles[n].DisplayUnit := FUnit;
+      // A click opens the account's detail window. Not on a kiosk: the
+      // pointer is hidden there and a modal that nobody closes would
+      // sit over the wall.
+      if not FKiosk then
+      begin
+        FTiles[n].OnClick := @TileClick;
+        FTiles[n].Cursor := crHandPoint;
+      end;
       Inc(n);
     end;
 

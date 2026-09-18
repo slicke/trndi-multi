@@ -70,10 +70,27 @@ type
     constructor Create(AOwner: TComponent); override;
     property State: TAccountState read FState write FState;
     property DisplayUnit: BGUnit read FUnit write FUnit;
+    {** A left click, for the window to open the account's detail view on;
+        the right button goes to PopupMenu as on every control. }
+    property OnClick;
   end;
+
+const
+  {** The range palette as CSS, for the Pixie-rendered detail view and
+      report: the same colours the tiles are painted in, so a value reads
+      the same on paper as on the wall. }
+  CSS_RANGE = '#2E7D32';
+  CSS_RANGE_HI = '#C99500';
+  CSS_RANGE_LO = '#0A6FA8';
+  CSS_HIGH = '#C43C1E';
+  CSS_LOW = '#B4142C';
+  CSS_NONE = '#45454B';
 
 {** Window background behind the tiles. }
 function BackgroundColor: TColor;
+
+{** The CSS colour for a reading's range level. }
+function LevelCss(lvl: BGValLevel): string;
 
 implementation
 
@@ -82,6 +99,7 @@ const
   // across a room, but the same meaning — green in range, amber and blue for
   // the room between a personal target band and the hard limits, red-orange
   // above and red below them.
+  // Kept in step with the CSS_* constants in the interface.
   COL_RANGE = $2E7D32;       // green (stored as RGB below via Swap)
   COL_RANGE_HI = $C99500;
   COL_RANGE_LO = $0A6FA8;
@@ -129,6 +147,18 @@ end;
 function BackgroundColor: TColor;
 begin
   Result := RGB(COL_BACK);
+end;
+
+function LevelCss(lvl: BGValLevel): string;
+begin
+  case lvl of
+    BGHigh: Result := CSS_HIGH;
+    BGLOW: Result := CSS_LOW;
+    BGRangeHI: Result := CSS_RANGE_HI;
+    BGRangeLO: Result := CSS_RANGE_LO;
+  else
+    Result := CSS_RANGE;
+  end;
 end;
 
 // The widest single word of a text in the canvas's current font: what

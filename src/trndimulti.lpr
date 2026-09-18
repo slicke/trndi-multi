@@ -63,6 +63,9 @@ cthreads, // MUST be first: fetches run on worker threads; without a thread
           // driver the RTL aborts with RE 232. Haiku needs it too but does
           // not define UNIX, hence the OR.
 {$ENDIF}
+{$IF DEFINED(LINUX)}
+trndimulti.ontop, // Before Interfaces: may put Qt on XWayland (see the unit)
+{$ENDIF}
 Interfaces, // LCL widgetset
 Forms, SysUtils, trndimulti.accounts, trndimulti.branding, trndimulti.terms,
 trndimulti.update, umulti;

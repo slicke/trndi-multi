@@ -64,7 +64,7 @@ Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus,
 LCLType, LCLIntf, Dialogs, Math, DateUtils, trndi.types, trndimulti.accounts,
 trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
 trndimulti.settings, trndimulti.update, trndimulti.markdown,
-trndimulti.report, trndimulti.about, trndimulti.branding;
+trndimulti.report, trndimulti.about, trndimulti.branding, trndimulti.ontop;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -87,6 +87,8 @@ type
     FUpdateTimer: TTimer;
     FClock: TClockBar;
     FMenu: TPopupMenu;
+    FOnTop: boolean;
+    FOnTopItem: TMenuItem;
     // Where the report goes once every fetch in flight has landed; ''
     // when none is wanted. Polling pauses while it is set.
     FReportFile: string;
@@ -96,6 +98,7 @@ type
     procedure MenuAccounts(Sender: TObject);
     procedure MenuRefresh(Sender: TObject);
     procedure MenuFullscreen(Sender: TObject);
+    procedure MenuOnTop(Sender: TObject);
     procedure MenuQuit(Sender: TObject);
     procedure MenuUpdate(Sender: TObject);
     procedure MenuAbout(Sender: TObject);
@@ -110,6 +113,7 @@ type
     procedure FetchDone(state: TAccountState);
     procedure FetchDue(force: boolean);
     procedure SetFullscreen(full: boolean);
+    procedure ApplyOnTop(fullscreen: boolean);
     procedure KioskApply(Sender: TObject);
   protected
     procedure Resize; override;
@@ -154,6 +158,8 @@ begin
   Position := poScreenCenter;
   KeyPreview := true;
   DoubleBuffered := true;
+  FOnTop := ReadOnTop;
+  ApplyOnTop(false);
 
   FTimer := TTimer.Create(Self);
   FTimer.Interval := TICK_MS;
@@ -258,6 +264,8 @@ begin
   Item('-', nil);
   Item('Refresh now' + #9 + 'F5', @MenuRefresh);
   Item('Full screen' + #9 + 'F11', @MenuFullscreen);
+  FOnTopItem := Item('Always on top', @MenuOnTop);
+  FOnTopItem.Checked := FOnTop;
   Item('-', nil);
   Item('Save report...', @MenuReport);
   Item('-', nil);
@@ -322,6 +330,28 @@ end;
 procedure TfMulti.MenuFullscreen(Sender: TObject);
 begin
   SetFullscreen(WindowState <> wsFullScreen);
+end;
+
+procedure TfMulti.MenuOnTop(Sender: TObject);
+begin
+  FOnTop := not FOnTop;
+  FOnTopItem.Checked := FOnTop;
+  WriteOnTop(FOnTop);
+  // Wayland: the hint only works through XWayland, which the program can
+  // only switch to at start (see trndimulti.ontop). Offer that.
+  if FOnTop and OnTopNeedsRestart then
+  begin
+    if MessageDlg('Trndi Multi',
+      'On this desktop the window can only stay on top when it runs ' +
+      'through XWayland, which takes a restart. Restart Trndi Multi now?',
+      mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+    begin
+      RestartProgram;
+      Close;
+    end;
+    exit;
+  end;
+  ApplyOnTop(WindowState = wsFullScreen);
 end;
 
 procedure TfMulti.MenuQuit(Sender: TObject);
@@ -630,12 +660,40 @@ end;
 // client size on some widgetsets, or not at all if the size did not change.
 procedure TfMulti.SetFullscreen(full: boolean);
 begin
+  // The floating level is dropped before the window goes full screen and
+  // put back once it is a normal window again, so a widgetset that
+  // recreates the window for a style change never does so mid-transition.
   if full then
-    WindowState := wsFullScreen
+  begin
+    ApplyOnTop(true);
+    WindowState := wsFullScreen;
+  end
   else
+  begin
     WindowState := wsNormal;
+    ApplyOnTop(false);
+  end;
   FClock.Visible := full;
   LayoutTiles;
+end;
+
+// The always-on-top setting, through the form style the LCL maps to each
+// platform's own notion of a floating window (HWND_TOPMOST, the Qt hint,
+// Cocoa's floating window level). Only outside full screen: a full-screen
+// window is above everything already, and macOS puts a native full-screen
+// window in a space of its own where a floating level makes no sense.
+// Some widgetsets recreate the window to change its style, so this is
+// done only when the style would actually change.
+procedure TfMulti.ApplyOnTop(fullscreen: boolean);
+var
+  want: TFormStyle;
+begin
+  if FOnTop and (not fullscreen) then
+    want := fsStayOnTop
+  else
+    want := fsNormal;
+  if FormStyle <> want then
+    FormStyle := want;
 end;
 
 procedure TfMulti.KeyDown(var Key: word; Shift: TShiftState);

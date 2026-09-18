@@ -58,7 +58,7 @@ The dialogs and the report are rendered by [Pixie](https://gitlab.com/retrofoxed
 | `F11` | Toggle full screen |
 | `Esc` | Leave full screen (not in kiosk mode) |
 | `Q` | Quit |
-| Right-click | Menu: _Accounts_, refresh, full screen, _Save report_, _Check for updates_, _About_, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
+| Right-click | Menu: _Accounts_, refresh, full screen, _Always on top_, _Save report_, _Check for updates_, _About_, quit. Not in kiosk mode, where a wall display's passwords should not be one click away. |
 
 | Flag | Effect |
 |------|--------|
@@ -66,6 +66,8 @@ The dialogs and the report are rendered by [Pixie](https://gitlab.com/retrofoxed
 | `--kiosk` | For a dedicated wall display: full screen, pointer hidden, Escape ignored, and the machine and screen kept awake for as long as it runs. On Linux that holds a logind idle/sleep lock, the desktop session's own idle inhibition over D-Bus (GNOME, KDE and anything with a desktop portal) and turns off X11 blanking; macOS uses `caffeinate`, Windows `SetThreadExecutionState`. All best-effort, and released on exit. |
 
 On macOS pass flags through the bundle: `open -a trndi-multi --args --kiosk`.
+
+_Always on top_ keeps the window above other programs' windows, for a wall that is also a desk: a small window in a corner that nothing covers. It is remembered between starts, at the root of Trndi's settings store, and yields to full screen, which is above everything anyway. Wayland has no way for a program to ask for this, so on a Wayland desktop the program runs through XWayland while the setting is on (GNOME and KDE both keep an XWayland window with that state on top); switching it on there offers a restart, since the toolkit can only be chosen at start. A `QT_QPA_PLATFORM` set in the environment is respected either way.
 
 Full screen, however it was entered, adds a clock strip above the tiles with the time and date: a wall display has no panel or taskbar to show them. It goes away with full screen.
 

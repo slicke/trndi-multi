@@ -52,7 +52,7 @@ interface
 
 uses
 Classes, SysUtils, Controls, Graphics, Types, Math, DateUtils, LCLIntf, LCLType,
-trndi.types, trndi.api, trndimulti.accounts, trndimulti.state;
+trndi.types, trndi.api, trndi.raster, trndimulti.accounts, trndimulti.state;
 
 type
   {** A TCustomControl that paints a @link(TAccountState). The state is owned
@@ -209,14 +209,28 @@ end;
 // tile, so a line that stops short of the right edge is a sensor that has
 // gone quiet, and two tiles can be compared by eye. Scaled so the hard
 // limits always fit: a reading pinned to the top or bottom edge then means
-// "off the chart", not "the highest we saw". The limits themselves are
-// drawn as thin lines.
+// "off the chart", not "the highest we saw". The room between the limits is
+// washed a shade lighter, and the personal target band inside it lighter
+// still, the way Trndi tints its own graphs; the limits themselves are
+// drawn as thin lines on top. The trace and its end dot go through Trndi's
+// rasterizer, so they are antialiased and land in device pixels on a
+// scaled desktop — a wall display shows this line at a size where an
+// aliased polyline reads as a staircase.
 procedure TAccountTile.DrawSpark(const r: TRect; bg: TColor);
+const
+  // Alpha of the white wash between the hard limits, and of the second wash
+  // stacked on it for the personal band. Faint: the tile's own colour is
+  // the message, the band only says where "in range" sits on the line.
+  BAND_ALPHA = 22;
+  TARGET_ALPHA = 26;
+  BAND_EDGE_PX = 2;
 var
   api: TrndiAPI;
   lo, hi, v: double;
   i, n, x, y, w, h: integer;
   pts: array of TPoint;
+  cols: array of TColor;
+  bands: array of TRangeBand;
   line: TColor;
   t0, t1: TDateTime;
 
@@ -251,6 +265,28 @@ begin
   if hi - lo < 1 then
     hi := lo + 1;
 
+  // Band rows are relative to the raster's top; DrawRangeBands clips what
+  // falls outside, so a personal band that reaches past the limits (a
+  // misconfiguration Trndi tolerates too) fades into the edge rather than
+  // being drawn wrong.
+  bands := nil;
+  SetLength(bands, 1);
+  bands[0].Top := YOf(api.cgmHi) - r.Top;
+  bands[0].Bottom := YOf(api.cgmLo) - r.Top;
+  bands[0].Color := clWhite;
+  bands[0].Alpha := BAND_ALPHA;
+  if (api.cgmRangeHi <> TrndiAPI.CGM_RANGE_HI_DISABLED) and
+    (api.cgmRangeLo <> TrndiAPI.CGM_RANGE_LO_DISABLED) and
+    (api.cgmRangeHi > api.cgmRangeLo) then
+  begin
+    SetLength(bands, 2);
+    bands[1].Top := YOf(api.cgmRangeHi) - r.Top;
+    bands[1].Bottom := YOf(api.cgmRangeLo) - r.Top;
+    bands[1].Color := clWhite;
+    bands[1].Alpha := TARGET_ALPHA;
+  end;
+  DrawRangeBands(Canvas, w, h, bands, BAND_EDGE_PX, r.Left, r.Top);
+
   line := Mix(bg, clWhite, 0.55);
   Canvas.Pen.Style := psSolid;
   Canvas.Pen.Width := 1;
@@ -272,15 +308,20 @@ begin
     pts[i] := Point(EnsureRange(x, r.Left, r.Right),
       YOf(FState.history[i].convert(mgdl)));
   end;
-  Canvas.Pen.Color := Mix(bg, clWhite, 0.9);
-  Canvas.Pen.Width := Max(2, h div 25);
-  Canvas.Polyline(pts);
+  // One colour along the whole trace: the tile's background already says
+  // which range the account is in. Uncached — every tile has its own trace,
+  // and the rasterizer keeps a single slot, so six tiles would only evict
+  // one another.
+  line := Mix(bg, clWhite, 0.9);
+  cols := nil;
+  SetLength(cols, n);
+  for i := 0 to n - 1 do
+    cols[i] := line;
+  DrawSmoothPolyline(Canvas, pts, cols, Max(2, h div 25), false);
   // The newest reading, marked.
-  Canvas.Brush.Color := clWhite;
-  Canvas.Pen.Color := clWhite;
   x := Max(3, h div 14);
-  Canvas.Ellipse(pts[n - 1].x - x, pts[n - 1].y - x, pts[n - 1].x + x,
-    pts[n - 1].y + x);
+  DrawSmoothCircle(Canvas, 2 * x, clWhite, clNone, 0, pts[n - 1].x - x,
+    pts[n - 1].y - x);
   Canvas.Brush.Style := bsClear;
 end;
 

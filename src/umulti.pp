@@ -649,9 +649,15 @@ begin
 end;
 
 procedure TfMulti.ReportDone(const fileName, err: string);
+var
+  i: integer;
 begin
   FReportFile := '';
   Screen.Cursor := crDefault;
+  // The report fetched through the backends too, and CareLink may have
+  // rotated a token on its thread.
+  for i := 0 to High(FStates) do
+    FStates[i].SyncCredentials;
   if FReportTimer <> nil then
   begin
     if err <> '' then

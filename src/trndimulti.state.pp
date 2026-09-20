@@ -55,7 +55,8 @@ unit trndimulti.state;
 interface
 
 uses
-Classes, SysUtils, DateUtils, Math, trndi.api, trndi.types, trndimulti.accounts;
+Classes, SysUtils, SyncObjs, DateUtils, Math, trndi.api, trndi.types,
+trndimulti.accounts;
 
 const
   {** Sparkline window: the last three hours. }
@@ -82,8 +83,17 @@ type
       whatever its outcome. }
   TStateEvent = procedure(state: TAccountState) of object;
 
-  {** Everything one tile shows. Written only from the main thread. }
+  {** Everything one tile shows. Written only from the main thread, apart
+      from the rotated credential, which a backend hands over on whatever
+      thread is fetching (see @link(CredentialsChanged)). }
   TAccountState = class
+  private
+    // A credential the backend rotated, waiting to be moved into info on
+    // the main thread. FCreds is the last value seen through this path,
+    // so a repeat from the backend is told apart without reading info.
+    FCredsLock: TCriticalSection;
+    FCreds: string;
+    FCredsDirty: boolean;
   public
     info: TAccountInfo;
     api: TrndiAPI;            //< nil until the first successful connect
@@ -106,9 +116,16 @@ type
     {** Age of the current reading in whole minutes; -1 without one. }
     function AgeMinutes: integer;
     {** Hooked to the backend's OnCredentialsChanged: persists a rotated
-        credential (see @link(StoreCredentials)) and keeps the in-memory
-        copy current for any later reconnect. Runs on the fetch thread. }
+        credential (see @link(StoreCredentials)) and parks it for
+        @link(SyncCredentials). Runs on whichever thread is using the
+        backend (a fetch, or the report), so it touches nothing the main
+        thread reads: info.name is fixed at construction and the rest is
+        behind a lock. }
     procedure CredentialsChanged(const newCreds: string);
+    {** Main thread: move a parked credential into info.creds, so a later
+        reconnect logs in with the token the backend currently accepts.
+        Called when a fetch lands. }
+    procedure SyncCredentials;
     {** True when the reading should be shown as old: the backend served it
         as a fallback (@link(stale)), or it has aged past two reporting
         intervals with some slack — the point at which a CGM app would
@@ -177,6 +194,8 @@ constructor TAccountState.Create(const a: TAccountInfo);
 begin
   inherited Create;
   info := a;
+  FCredsLock := TCriticalSection.Create;
+  FCreds := a.creds;
   current.Clear;
 end;
 
@@ -193,6 +212,7 @@ begin
   end;
   FreeAndNil(doneThread);
   FreeAndNil(api);
+  FCredsLock.Free;
   inherited Destroy;
 end;
 
@@ -218,11 +238,38 @@ begin
 end;
 
 procedure TAccountState.CredentialsChanged(const newCreds: string);
+var
+  changed: boolean;
 begin
-  if newCreds = info.creds then
-    exit;
-  info.creds := newCreds;
-  StoreCredentials(info, newCreds);
+  FCredsLock.Acquire;
+  try
+    changed := newCreds <> FCreds;
+    if changed then
+    begin
+      FCreds := newCreds;
+      FCredsDirty := true;
+    end;
+  finally
+    FCredsLock.Release;
+  end;
+  // To disk at once, from this thread: the old token is already revoked,
+  // and the main thread may be busy for a while. Only info.name is read.
+  if changed then
+    StoreCredentials(info, newCreds);
+end;
+
+procedure TAccountState.SyncCredentials;
+begin
+  FCredsLock.Acquire;
+  try
+    if FCredsDirty then
+    begin
+      info.creds := FCreds;
+      FCredsDirty := false;
+    end;
+  finally
+    FCredsLock.Release;
+  end;
 end;
 
 function TAccountState.IsStale: boolean;
@@ -367,6 +414,7 @@ begin
   FState.err := FErr;
   FState.everFetched := true;
   FState.lastFetch := Now;
+  FState.SyncCredentials;
 
   // A fresh reading: poll again one interval after it, plus a little slack
   // for the upload path. That moment already passed (the reading arrived

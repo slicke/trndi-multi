@@ -53,7 +53,14 @@ ifeq ($(shell uname -s),Darwin)
   DEV_APP := bin/trndi-multi.app
   DEV_BUNDLE_ID ?= com.slicke.trndi-multi.dev
   DEV_BUNDLE_NAME ?= Trndi Multi Dev
+  # Its own artwork too, in Finder and (see trndimulti.branding) the Dock,
+  # so a development build is never mistaken for the installed one.
+  DEV_BUNDLE_ICON ?= TrndiMulti-dev.png
 endif
+# Wrap $(BIN) in $(DEV_APP); used by 'app' and, on macOS, 'debug'.
+WRAP_DEV_APP = APP_ID="$(DEV_BUNDLE_ID)" APP_NAME="$(DEV_BUNDLE_NAME)" \
+  ICON_SRC="$(DEV_BUNDLE_ICON)" dist/macos_bundle.sh $(BIN) $(DEV_APP) && \
+  echo "Wrapped $(BIN) in $(DEV_APP) ($(DEV_BUNDLE_ID))"
 
 LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)" $(DARWIN_LD_FLAGS)
 
@@ -73,11 +80,11 @@ all: build
 help:
 	@echo "Targets:"
 	@echo "  build     Release build (default; honors BUILD_MODE and WIDGETSET)"
-	@echo "  debug     Debug build (range checks, heaptrc, DWARF)"
+	@echo "  debug     Debug build (range checks, heaptrc, DWARF); on macOS also wrapped in $(DEV_APP)"
 	@echo "  rebuild   Release build with every unit recompiled (-B)"
 	@echo "  run       Build, then start it (RUN_ARGS forwards arguments, e.g. RUN_ARGS=--kiosk);"
 	@echo "            on macOS as the development bundle $(DEV_APP)"
-	@echo "  app       macOS: build and wrap the binary in $(DEV_APP) ($(DEV_BUNDLE_ID))"
+	@echo "  app       macOS: build and wrap the binary in $(DEV_APP) ($(DEV_BUNDLE_NAME), icon $(DEV_BUNDLE_ICON))"
 	@echo "  clean     Remove lib/, bin/ and the generated project resource"
 	@echo "  icon      Rebuild TrndiMulti.png/.ico from \$$(LOGO) (needs ImageMagick)"
 	@echo "  install   Copy the binary to \$$(PREFIX)/bin (default /usr/local); on Linux/BSD also the desktop entry and icon"
@@ -87,9 +94,14 @@ help:
 build:
 	$(LAZBUILD) $(LAZFLAGS) TrndiMulti.lpi
 
+# On macOS the debug binary is also wrapped in the development bundle, so
+# 'open bin/trndi-multi.app' (or Finder) starts the build just made.
 debug:
 	$(LAZBUILD) --widgetset=$(WIDGETSET) --build-mode=Debug $(DARWIN_LD_FLAGS) \
 	  $(DARWIN_DEBUG_FLAGS) TrndiMulti.lpi
+ifeq ($(shell uname -s),Darwin)
+	@$(WRAP_DEV_APP)
+endif
 
 rebuild:
 	$(LAZBUILD) -B $(LAZFLAGS) TrndiMulti.lpi
@@ -117,9 +129,7 @@ endif
 # Rebuilt from the binary on every call; lazbuild decides whether that changed.
 app: build
 	@if [ "$$(uname -s)" != Darwin ]; then echo "'make app' is macOS only"; exit 1; fi
-	@APP_ID="$(DEV_BUNDLE_ID)" APP_NAME="$(DEV_BUNDLE_NAME)" \
-	  dist/macos_bundle.sh $(BIN) $(DEV_APP)
-	@echo "Wrapped $(BIN) in $(DEV_APP) ($(DEV_BUNDLE_ID))"
+	@$(WRAP_DEV_APP)
 
 clean:
 	rm -rf lib bin

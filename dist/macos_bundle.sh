@@ -31,28 +31,26 @@ cp "${BIN}" "${APP}/Contents/MacOS/trndi-multi"
 # GPLv3 sections 4 and 6: the licence travels with the binary.
 cp "$(dirname "$0")/../LICENSE" "${APP}/Contents/Resources/LICENSE.txt"
 
-# Finder icon: TrndiMulti.png, the square app icon `make icon` normalises
+# Finder icon: ICON_SRC, by default TrndiMulti.png, the square app icon `make icon` normalises
 # out of logo.png, as an .icns built with the Apple-standard iconset names
 # so iconutil accepts it. The icon of the *running* app is the binary's
 # MAINICON resource, which the LCL's Cocoa widgetset pushes to the Dock at
-# startup; that is built from the same artwork, so the two agree. Kept when
-# it is newer than the artwork, so a development rebuild does not redo it.
+# startup, and trndimulti.branding hands the Dock back to this icon when the
+# program runs as an .app; the development bundle passes its own artwork.
 ICNS="${APP}/Contents/Resources/TrndiMulti.icns"
 ICON_PLIST=""
 if [ -f "${ICON_SRC}" ]; then
-  if [ ! -f "${ICNS}" ] || [ "${ICON_SRC}" -nt "${ICNS}" ]; then
-    ICONSET="$(dirname "${APP}")/TrndiMulti.iconset"
-    rm -rf "${ICONSET}"
-    mkdir -p "${ICONSET}"
-    for spec in 16:icon_16x16 32:icon_16x16@2x 32:icon_32x32 64:icon_32x32@2x \
-                128:icon_128x128 256:icon_128x128@2x 256:icon_256x256 \
-                512:icon_256x256@2x 512:icon_512x512 1024:icon_512x512@2x; do
-      size="${spec%%:*}"; name="${spec#*:}"
-      sips -z "${size}" "${size}" "${ICON_SRC}" --out "${ICONSET}/${name}.png" >/dev/null
-    done
-    iconutil -c icns "${ICONSET}" -o "${ICNS}"
-    rm -rf "${ICONSET}"
-  fi
+  ICONSET="$(dirname "${APP}")/TrndiMulti.iconset"
+  rm -rf "${ICONSET}"
+  mkdir -p "${ICONSET}"
+  for spec in 16:icon_16x16 32:icon_16x16@2x 32:icon_32x32 64:icon_32x32@2x \
+              128:icon_128x128 256:icon_128x128@2x 256:icon_256x256 \
+              512:icon_256x256@2x 512:icon_512x512 1024:icon_512x512@2x; do
+    size="${spec%%:*}"; name="${spec#*:}"
+    sips -z "${size}" "${size}" "${ICON_SRC}" --out "${ICONSET}/${name}.png" >/dev/null
+  done
+  iconutil -c icns "${ICONSET}" -o "${ICNS}"
+  rm -rf "${ICONSET}"
   ICON_PLIST="  <key>CFBundleIconFile</key><string>TrndiMulti.icns</string>"
 else
   echo "WARN: ${ICON_SRC} not found; bundle gets the generic icon" >&2

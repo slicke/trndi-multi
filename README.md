@@ -100,7 +100,7 @@ make debug      # debug build; also compiles in Trndi's debug backends
 make install    # to /usr/local/bin
 ```
 
-On macOS with Xcode 27 or later, Apple's linker rejects what FPC 3.2 emits for Objective-C; `brew install lld` and the Makefile links through LLVM's `ld64.lld` instead, using Trndi's shim in `vendor/trndi/tools/darwin-lld`. The Makefile also finds a lazbuild in `/Applications/lazarus` or `~/fpcupdeluxe` when none is on PATH.
+On macOS with Xcode 27 or later, Apple's linker rejects what FPC 3.2 emits for Objective-C; `brew install lld` and the Makefile links through LLVM's `ld64.lld` instead, using Trndi's shim in `vendor/trndi/tools/darwin-lld`. The Makefile also finds a lazbuild in `/Applications/lazarus` or `~/fpcupdeluxe` when none is on PATH. `make run` (with `RUN_ARGS=--kiosk` and the like) starts the program on macOS as a development bundle, `bin/trndi-multi.app` with its own identity `com.slicke.trndi-multi.dev`, so it gets a Dock icon and activates like a Finder launch; `dist/macos.sh` builds the release bundle through the same `dist/macos_bundle.sh`.
 
 `make WIDGETSET=gtk2` (or any widgetset your Lazarus has) picks another LCL backend; the Makefile defaults to qt6 on Linux and BSD, cocoa on macOS. Windows builds with `.\make.ps1` (win32 widgetset).
 

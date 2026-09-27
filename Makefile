@@ -46,6 +46,13 @@ ifeq ($(shell uname -s),Darwin)
   # FPC 3.2.x's DWARF 3 writer stops with an internal error on Objective-C
   # classes; the Debug mode asks for DWARF 3, and a later -gw2 wins.
   DARWIN_DEBUG_FLAGS := --opt=-gw2
+  # The development bundle 'make run' starts. Its own identity keeps it
+  # apart from an installed Trndi Multi in the Dock, Spotlight and the
+  # permission prompts; the accounts are Trndi's either way (read from
+  # com.slicke.Trndi, see trndimulti.accounts).
+  DEV_APP := bin/trndi-multi.app
+  DEV_BUNDLE_ID ?= com.slicke.trndi-multi.dev
+  DEV_BUNDLE_NAME ?= Trndi Multi Dev
 endif
 
 LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)" $(DARWIN_LD_FLAGS)
@@ -59,7 +66,7 @@ LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)" $(DARWIN_LD_FLA
 LOGO ?= trndi-multi.png
 MAGICK ?= $(shell command -v magick 2>/dev/null || command -v convert 2>/dev/null)
 
-.PHONY: all build debug rebuild run clean icon install uninstall help
+.PHONY: all build debug rebuild run app clean icon install uninstall help
 
 all: build
 
@@ -68,7 +75,9 @@ help:
 	@echo "  build     Release build (default; honors BUILD_MODE and WIDGETSET)"
 	@echo "  debug     Debug build (range checks, heaptrc, DWARF)"
 	@echo "  rebuild   Release build with every unit recompiled (-B)"
-	@echo "  run       Build, then start it (RUN_ARGS forwards arguments, e.g. RUN_ARGS=--kiosk)"
+	@echo "  run       Build, then start it (RUN_ARGS forwards arguments, e.g. RUN_ARGS=--kiosk);"
+	@echo "            on macOS as the development bundle $(DEV_APP)"
+	@echo "  app       macOS: build and wrap the binary in $(DEV_APP) ($(DEV_BUNDLE_ID))"
 	@echo "  clean     Remove lib/, bin/ and the generated project resource"
 	@echo "  icon      Rebuild TrndiMulti.png/.ico from \$$(LOGO) (needs ImageMagick)"
 	@echo "  install   Copy the binary to \$$(PREFIX)/bin (default /usr/local); on Linux/BSD also the desktop entry and icon"
@@ -86,8 +95,31 @@ rebuild:
 	$(LAZBUILD) -B $(LAZFLAGS) TrndiMulti.lpi
 
 # RUN_ARGS goes to the program, e.g. make run RUN_ARGS="--kiosk --fullscreen".
+# On macOS the development bundle is launched through LaunchServices (open),
+# so it runs with a bundle identity, Dock icon, Retina backing and activation
+# like a Finder launch, which the bare binary started from a shell lacks. -n
+# starts a new instance even if one is running (otherwise open only
+# activates it), -W waits for it to quit, and --stdout/--stderr keep its
+# output in this terminal. Without a terminal (CI, editor tasks) the
+# bundle's executable is run directly instead.
+ifeq ($(shell uname -s),Darwin)
+run: app
+	@if tty=$$(tty 2>/dev/null); then \
+	  open -n -W --stdout "$$tty" --stderr "$$tty" "$(DEV_APP)" --args $(RUN_ARGS); \
+	else \
+	  "$(DEV_APP)/Contents/MacOS/trndi-multi" $(RUN_ARGS); \
+	fi
+else
 run: build
 	./$(BIN) $(RUN_ARGS)
+endif
+
+# Rebuilt from the binary on every call; lazbuild decides whether that changed.
+app: build
+	@if [ "$$(uname -s)" != Darwin ]; then echo "'make app' is macOS only"; exit 1; fi
+	@APP_ID="$(DEV_BUNDLE_ID)" APP_NAME="$(DEV_BUNDLE_NAME)" \
+	  dist/macos_bundle.sh $(BIN) $(DEV_APP)
+	@echo "Wrapped $(BIN) in $(DEV_APP) ($(DEV_BUNDLE_ID))"
 
 clean:
 	rm -rf lib bin

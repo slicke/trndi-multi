@@ -40,8 +40,10 @@
 
 {**
   The PDF report: one page section per account with its latest reading,
-  the last day's time in range, mean and extremes, a chart of the readings
-  against the account's own limits, and an hourly table. Something to hand
+  the last day's time in range, mean, variability, GMI, extremes and gaps
+  (computed by Trndi's own trndi.report, so both programs report the same
+  figures), a chart of the readings against the account's own limits, and
+  an hourly table. Something to hand
   to a clinic, which is what a caregiver at a wall display is often asked
   for and what the wall itself cannot give.
 
@@ -116,8 +118,8 @@ function ReportHtml(const sections: TReportSections; u: BGUnit;
 implementation
 
 uses
-Math, StrUtils, DateUtils, base64, trndimulti.state, trndimulti.branding,
-trndimulti.buildinfo, trndimulti.tile, Pixie.PdfExport;
+Math, StrUtils, DateUtils, base64, trndi.report, trndimulti.state,
+trndimulti.branding, trndimulti.buildinfo, trndimulti.tile, Pixie.PdfExport;
 
 const
   // Dexcom Share's hard cap on one history request.
@@ -137,12 +139,6 @@ type
   public
     constructor Create(const accounts: TReportAccounts; displayUnit: BGUnit;
       const fileName: string; onDone: TReportDone);
-  end;
-
-  TStats = record
-    n, low, inRange, high, aboveTarget, belowTarget: integer;
-    mean, sd, minV, maxV: double;
-    minAt, maxAt: TDateTime;
   end;
 
 var
@@ -227,52 +223,41 @@ end;
   Statistics
  ------------------------------------------------------------------------------}
 
-function Compute(const s: TReportSection): TStats;
+// The copied thresholds as Trndi's report wants them, in mg/dL. A target
+// with one side unset runs to the clinical limit on that side, as the
+// chart shades it.
+function LimitsOf(const s: TReportSection): TTrndiReportLimits;
 var
-  i: integer;
-  v, sum, sq: double;
+  topV, bottomV: integer;
 begin
-  Result := Default(TStats);
-  sum := 0;
-  sq := 0;
-  for i := 0 to High(s.history) do
-  begin
-    v := s.history[i].convert(mgdl);
-    if (Result.n = 0) or (v < Result.minV) then
-    begin
-      Result.minV := v;
-      Result.minAt := s.history[i].date;
-    end;
-    if (Result.n = 0) or (v > Result.maxV) then
-    begin
-      Result.maxV := v;
-      Result.maxAt := s.history[i].date;
-    end;
-    Inc(Result.n);
-    sum := sum + v;
-    sq := sq + v * v;
-    case LevelOf(v, s) of
-      BGHigh: Inc(Result.high);
-      BGLOW: Inc(Result.low);
-      BGRangeHI:
-      begin
-        Inc(Result.inRange);
-        Inc(Result.aboveTarget);
-      end;
-      BGRangeLO:
-      begin
-        Inc(Result.inRange);
-        Inc(Result.belowTarget);
-      end;
-    else
-      Inc(Result.inRange);
-    end;
+  topV := s.top;
+  if topV = TrndiAPI.CGM_RANGE_HI_DISABLED then
+    topV := s.hi;
+  bottomV := s.bottom;
+  if bottomV = TrndiAPI.CGM_RANGE_LO_DISABLED then
+    bottomV := s.lo;
+  Result := TrndiMakeReportLimits(s.lo, s.hi, bottomV, topV, HasTarget(s));
+end;
+
+// Trndi's report counts a reading on a limit as inside it, where the tile
+// (getLevel) counts it as past it. The history is measured the report's
+// way throughout, so the chart, the table and the figures agree.
+function BandLevel(v: double; const limits: TTrndiReportLimits): BGValLevel;
+begin
+  case TrndiReportBandOf(v, limits) of
+    rbLow: Result := BGLOW;
+    rbBelowRange: Result := BGRangeLO;
+    rbAboveRange: Result := BGRangeHI;
+    rbHigh: Result := BGHigh;
+  else
+    Result := BGRange;
   end;
-  if Result.n > 0 then
-  begin
-    Result.mean := sum / Result.n;
-    Result.sd := Sqrt(Max(0, sq / Result.n - Result.mean * Result.mean));
-  end;
+end;
+
+// The statistics over the day, in mg/dL like everything else here.
+function Compute(const s: TReportSection; const toT: TDateTime): TTrndiReportStats;
+begin
+  Result := TrndiBuildReport(s.history, mgdl, LimitsOf(s), REPORT_HOURS * 60, toT);
 end;
 
 {------------------------------------------------------------------------------
@@ -300,6 +285,7 @@ var
   t, tick: TDateTime;
   pts, dots, bands: string;
   topV, bottomV: integer;
+  limits: TTrndiReportLimits;
 
   function XOf(const at: TDateTime): double;
   begin
@@ -367,6 +353,7 @@ begin
   end;
 
   // The line, broken at gaps of more than three intervals, and the dots.
+  limits := LimitsOf(s);
   gapMin := 3 * Max(1, s.interval);
   pts := '';
   dots := '';
@@ -387,7 +374,7 @@ begin
       pts := pts + ' ';
     pts := pts + Pt(x) + ',' + Pt(y);
     dots := dots + '<circle cx="' + Pt(x) + '" cy="' + Pt(y) +
-      '" r="2.2" fill="' + LevelCss(LevelOf(v, s)) + '"/>';
+      '" r="2.2" fill="' + LevelCss(BandLevel(v, limits)) + '"/>';
   end;
   if pts <> '' then
     pts := pts + '"/>';
@@ -416,7 +403,9 @@ var
   bucket, bucketEnd: TDateTime;
   i, n, nLow, nHigh: integer;
   v, sum, minV, maxV: double;
+  limits: TTrndiReportLimits;
 begin
+  limits := LimitsOf(s);
   Result := '<table><tr><th class="l">Hour</th><th>Readings</th><th>Mean</th>' +
     '<th>Lowest</th><th>Highest</th><th>Low</th><th>High</th></tr>';
   bucket := RecodeTime(fromT, HourOf(fromT), 0, 0, 0);
@@ -439,9 +428,9 @@ begin
         maxV := v;
       sum := sum + v;
       Inc(n);
-      case LevelOf(v, s) of
-        BGHigh: Inc(nHigh);
-        BGLOW: Inc(nLow);
+      case TrndiReportBandOf(v, limits) of
+        rbHigh: Inc(nHigh);
+        rbLow: Inc(nLow);
       end;
       Inc(i);
     end;
@@ -464,15 +453,16 @@ end;
 function SectionHtml(const s: TReportSection; u: BGUnit;
   const fromT, toT: TDateTime): string;
 var
-  st: TStats;
+  st: TTrndiReportStats;
   cur: BGReading;
   v: double;
-  note, bar, target, cv: string;
+  low, inRange, high: integer;
+  note, bar, target, gap: string;
 begin
-  st := Compute(s);
-  cv := '–';
-  if st.mean > 0 then
-    cv := Format('%.0f%%', [100 * st.sd / st.mean]);
+  st := Compute(s, toT);
+  low := st.bands[rbLow];
+  high := st.bands[rbHigh];
+  inRange := st.count - low - high;
   Result := '<hr><div class="acct"><h2>' + H(AccountLabel(s.acct.info)) + '</h2>' +
     '<div class="meta">';
   // The thresholds are the backend's; an account that never connected
@@ -523,37 +513,53 @@ begin
       H(s.fetchErr) + '</p>';
 
   // The day in numbers.
-  if st.n > 0 then
+  if st.valid then
   begin
     bar := '<div class="bar">';
-    if st.low > 0 then
-      bar := bar + '<div style="width:' + Pt(100 * st.low / st.n) +
+    if low > 0 then
+      bar := bar + '<div style="width:' + Pt(100 * low / st.count) +
         '%;background:' + CSS_LOW + '"></div>';
-    if st.inRange > 0 then
-      bar := bar + '<div style="width:' + Pt(100 * st.inRange / st.n) +
+    if inRange > 0 then
+      bar := bar + '<div style="width:' + Pt(100 * inRange / st.count) +
         '%;background:' + CSS_RANGE + '"></div>';
-    if st.high > 0 then
-      bar := bar + '<div style="width:' + Pt(100 * st.high / st.n) +
+    if high > 0 then
+      bar := bar + '<div style="width:' + Pt(100 * high / st.count) +
         '%;background:' + CSS_HIGH + '"></div>';
     bar := bar + '</div>';
     Result := Result + '<div class="stats">' + bar +
-      '<div class="tir"><span class="low">Low ' + Pct(st.low, st.n) + '</span>' +
-      '<span class="range">In range ' + Pct(st.inRange, st.n) + '</span>' +
-      '<span class="high">High ' + Pct(st.high, st.n) + '</span>';
-    if HasTarget(s) then
+      '<div class="tir"><span class="low">Low ' + Pct(low, st.count) + '</span>' +
+      '<span class="range">In range ' + Pct(inRange, st.count) + '</span>' +
+      '<span class="high">High ' + Pct(high, st.count) + '</span>';
+    if st.limits.hasRange then
       Result := Result + '<span class="target">In personal target ' +
-        Pct(st.inRange - st.aboveTarget - st.belowTarget, st.n) + '</span>';
+        Pct(st.bands[rbInRange], st.count) + '</span>';
+    // The longest gap only says something when it is wider than the
+    // sensor's own spacing.
+    if st.longestGap > 2 * Max(1, Round(st.cadenceMinutes)) then
+      gap := H(FormatAge(st.longestGap)) + ', from ' + Stamp(st.longestGapAt)
+    else
+      gap := 'none beyond the usual spacing';
     Result := Result + '</div>' +
       '<table class="kv">' +
-      '<tr><th class="l">Readings</th><td class="l">' + IntToStr(st.n) +
-      ', from ' + Stamp(s.history[0].date) + ' to ' +
-      Stamp(s.history[High(s.history)].date) + '</td></tr>' +
+      '<tr><th class="l">Readings</th><td class="l">' + IntToStr(st.count) +
+      ', from ' + Stamp(st.first) + ' to ' + Stamp(st.last) + ', about ' +
+      Format('%.0f', [st.cadenceMinutes]) + ' min apart, covering ' +
+      Format('%.0f%%', [st.coverage]) + '</td></tr>' +
       '<tr><th class="l">Mean</th><td class="l">' + H(FmtV(st.mean, u)) + ' ' +
-      BG_UNIT_NAMES[u] + ' (SD ' + H(FmtV(st.sd, u)) + ', CV ' + cv + ')</td></tr>' +
-      '<tr><th class="l">Lowest</th><td class="l">' + H(FmtV(st.minV, u)) +
-      ' at ' + Stamp(st.minAt) + '</td></tr>' +
-      '<tr><th class="l">Highest</th><td class="l">' + H(FmtV(st.maxV, u)) +
-      ' at ' + Stamp(st.maxAt) + '</td></tr>' +
+      BG_UNIT_NAMES[u] + ' (median ' + H(FmtV(st.median, u)) + ', SD ' +
+      H(FmtV(st.sd, u)) + ', CV ' + Format('%.0f%%', [st.cv]) + ')</td></tr>' +
+      '<tr><th class="l">GMI</th><td class="l">' +
+      Format('%.1f%% (%.0f mmol/mol)', [st.gmiPercent, st.gmiMmolMol]) +
+      '</td></tr>' +
+      '<tr><th class="l">Lowest</th><td class="l">' + H(FmtV(st.lowest, u)) +
+      ' at ' + Stamp(st.lowestAt) + '</td></tr>' +
+      '<tr><th class="l">Highest</th><td class="l">' + H(FmtV(st.highest, u)) +
+      ' at ' + Stamp(st.highestAt) + '</td></tr>' +
+      '<tr><th class="l">Excursions</th><td class="l">' +
+      Format('%d low, %d high (runs of %d or more readings past the limit)',
+      [st.lowExcursions, st.highExcursions, TRNDI_REPORT_EXCURSION_MIN]) +
+      '</td></tr>' +
+      '<tr><th class="l">Longest gap</th><td class="l">' + gap + '</td></tr>' +
       '</table></div>';
   end;
 
@@ -561,7 +567,7 @@ begin
   // renders SVG through (as a vector form, not a bitmap).
   Result := Result + '<div class="chart"><img src="data:image/svg+xml;base64,' +
     EncodeStringBase64(ChartSvg(s, u, fromT, toT)) + '" width="660" height="210"></div>';
-  if st.n > 0 then
+  if st.valid then
     Result := Result + HourlyTable(s, u, fromT, toT);
   Result := Result + '</div>';
 end;
@@ -599,7 +605,7 @@ const
     'th.l, td.l { text-align: left; }' +
     'td.low { color: ' + CSS_LOW + '; font-weight: bold; }' +
     'td.high { color: ' + CSS_HIGH + '; font-weight: bold; }' +
-    'table.kv th { width: 60pt; }' +
+    'table.kv th { width: 72pt; }' +
     '.chart { margin-top: 10pt; }' +
     '.foot { margin-top: 24pt; padding-top: 6pt; border-top: 1px solid #DDDDDD; ' +
     'color: #666666; font-size: 8.5pt; }';
@@ -633,7 +639,9 @@ begin
     'come from each account''s CGM service as trndi-multi received them and ' +
     'may be delayed, incomplete or wrong; verify against the official device ' +
     'and records before acting on anything here. Time in range is the share ' +
-    'of readings, not of time, so gaps in the data are not counted.</div>' +
+    'of readings, not of time, so gaps in the data are not counted. GMI ' +
+    'restates the period''s mean on the A1c scale; it is not a laboratory ' +
+    'A1c.</div>' +
     '</body></html>';
 end;
 

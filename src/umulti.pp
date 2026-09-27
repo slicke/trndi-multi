@@ -52,6 +52,10 @@
 
   Full screen adds a clock strip above the tiles: a wall display has no
   panel or taskbar to tell the time.
+
+  On macOS the readings can also sit in the menu bar, one pill per account
+  (trndimulti.menubar); not in kiosk mode, where nobody is at the menu bar
+  and a full-screen window hides it anyway.
 }
 unit umulti;
 
@@ -65,7 +69,7 @@ LCLType, LCLIntf, Dialogs, Math, DateUtils, trndi.types, trndimulti.accounts,
 trndimulti.state, trndimulti.tile, trndimulti.kiosk, trndimulti.clock,
 trndimulti.settings, trndimulti.update, trndimulti.markdown,
 trndimulti.report, trndimulti.about, trndimulti.branding, trndimulti.ontop,
-trndimulti.detail;
+trndimulti.detail, trndimulti.menubar;
 
 type
   {** The main (and only) window. Built in code: no form resource.
@@ -90,6 +94,10 @@ type
     FMenu: TPopupMenu;
     FOnTop: boolean;
     FOnTopItem: TMenuItem;
+    // The menu-bar pills; nil where unsupported, in kiosk mode, and while
+    // the setting is off.
+    FPills: TMenuBarPills;
+    FMenuBarItem: TMenuItem;
     // Where the report goes once every fetch in flight has landed; ''
     // when none is wanted. Polling pauses while it is set.
     FReportFile: string;
@@ -100,6 +108,12 @@ type
     procedure MenuRefresh(Sender: TObject);
     procedure MenuFullscreen(Sender: TObject);
     procedure MenuOnTop(Sender: TObject);
+    procedure MenuMenuBar(Sender: TObject);
+    procedure ApplyMenuBar(pillsOn: boolean);
+    procedure UpdatePills;
+    procedure PillShowClicked;
+    procedure PillHideClicked;
+    procedure PillQuitClicked;
     procedure MenuQuit(Sender: TObject);
     procedure MenuUpdate(Sender: TObject);
     procedure MenuAbout(Sender: TObject);
@@ -176,6 +190,8 @@ begin
     BuildMenu;
   LoadAccounts;
   LayoutTiles;
+  if (not FKiosk) and MenuBarSupported then
+    ApplyMenuBar(ReadMenuBar);
   FetchDue(true);
   FTimer.Enabled := true;
 
@@ -249,6 +265,7 @@ begin
   AbandonReport;
   if FKiosk then
     SetKeepAwake(false);
+  FreeAndNil(FPills);
   ClearAccounts;
   inherited Destroy;
 end;
@@ -271,6 +288,8 @@ begin
   Item('Full screen' + #9 + 'F11', @MenuFullscreen);
   FOnTopItem := Item('Always on top', @MenuOnTop);
   FOnTopItem.Checked := FOnTop;
+  if MenuBarSupported then
+    FMenuBarItem := Item('Readings in the menu bar', @MenuMenuBar);
   Item('-', nil);
   Item('Save report...', @MenuReport);
   Item('-', nil);
@@ -292,6 +311,9 @@ var
   states: array of TAccountState;
   i: integer;
 begin
+  // The pills are keyed by account; the next UpdatePills recreates them.
+  if FPills <> nil then
+    FPills.Clear;
   tiles := FTiles;
   states := FStates;
   FTiles := nil;
@@ -324,6 +346,7 @@ begin
   ClearAccounts;
   LoadAccounts;
   LayoutTiles;
+  UpdatePills;
   FetchDue(true);
 end;
 
@@ -357,6 +380,59 @@ begin
     exit;
   end;
   ApplyOnTop(WindowState = wsFullScreen);
+end;
+
+procedure TfMulti.MenuMenuBar(Sender: TObject);
+begin
+  WriteMenuBar(FPills = nil);
+  ApplyMenuBar(FPills = nil);
+end;
+
+// Stored or not, the setting takes effect here: pills on or off, and the
+// menu item's check mark to match.
+procedure TfMulti.ApplyMenuBar(pillsOn: boolean);
+begin
+  if FMenuBarItem <> nil then
+    FMenuBarItem.Checked := pillsOn;
+  if not pillsOn then
+  begin
+    FreeAndNil(FPills);
+    exit;
+  end;
+  if FPills = nil then
+    FPills := TMenuBarPills.Create(@PillShowClicked, @PillHideClicked,
+      @PillQuitClicked);
+  UpdatePills;
+end;
+
+procedure TfMulti.UpdatePills;
+begin
+  if FPills <> nil then
+    FPills.Update(FStates, FUnit);
+end;
+
+procedure TfMulti.PillShowClicked;
+begin
+  if WindowState = wsMinimized then
+    WindowState := wsNormal;
+  Show;
+  Application.BringToFront;
+  BringToFront;
+end;
+
+procedure TfMulti.PillHideClicked;
+begin
+  WriteMenuBar(false);
+  ApplyMenuBar(false);
+  MessageDlg('Trndi Multi', 'The readings are no longer shown in the menu ' +
+    'bar.' + LineEnding + LineEnding + 'You can turn them back on by ' +
+    'right-clicking the window and choosing "Readings in the menu bar".',
+    mtInformation, [mbOK], 0);
+end;
+
+procedure TfMulti.PillQuitClicked;
+begin
+  Close;
 end;
 
 procedure TfMulti.MenuQuit(Sender: TObject);
@@ -555,9 +631,11 @@ var
   i: integer;
 begin
   FetchDue(false);
-  // Ages on the footers move on even when nothing was fetched.
+  // Ages on the footers move on even when nothing was fetched, and a pill
+  // turns to '--' once its reading goes stale.
   for i := 0 to High(FTiles) do
     FTiles[i].Invalidate;
+  UpdatePills;
 end;
 
 procedure TfMulti.FetchDue(force: boolean);
@@ -580,6 +658,7 @@ begin
   for i := 0 to High(FTiles) do
     if FTiles[i].State = state then
       FTiles[i].Invalidate;
+  UpdatePills;
   TryStartReport;
 end;
 

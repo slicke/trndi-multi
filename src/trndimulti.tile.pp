@@ -89,6 +89,11 @@ const
 {** Window background behind the tiles. }
 function BackgroundColor: TColor;
 
+{** A tile's fill for @param(state): the range colour, faded towards slate
+    as a stale reading ages, or grey without a reading. The menu-bar pills
+    use it too, so a pill matches its tile. }
+function TileColor(state: TAccountState): TColor;
+
 {** The CSS colour for a reading's range level. }
 function LevelCss(lvl: BGValLevel): string;
 
@@ -147,6 +152,20 @@ end;
 function BackgroundColor: TColor;
 begin
   Result := RGB(COL_BACK);
+end;
+
+// A stale reading fades the range colour towards slate, the more the older
+// it is: a tile that went quiet a few minutes ago still hints at where it
+// was, one that has been silent an hour says only that it is silent. Nobody
+// should act on a two-hour-old "high".
+function TileColor(state: TAccountState): TColor;
+begin
+  if (state = nil) or (not state.haveCurrent) then
+    exit(RGB(COL_NONE));
+  Result := LevelColor(state.current.level);
+  if state.StaleStage <> ssFresh then
+    Result := Mix(Result, RGB(COL_STALE),
+      0.6 + 0.3 * EnsureRange(state.AgeMinutes / STALE_LOST_MINUTES, 0, 1));
 end;
 
 function LevelCss(lvl: BGValLevel): string;
@@ -341,24 +360,16 @@ begin
   w := r.Right - r.Left;
   pad := Max(6, h div 30);
 
-  // Background by range; grey without a reading. A stale reading fades the
-  // range colour towards slate, the more the older it is: a tile that went
-  // quiet a few minutes ago still hints at where it was, one that has been
-  // silent an hour says only that it is silent. Nobody should act on a
-  // two-hour-old "high".
+  // Background by range; grey without a reading, faded towards slate when
+  // stale (see TileColor).
   stage := ssFresh;
   age := -1;
-  if (FState = nil) or (not FState.haveCurrent) then
-    bg := RGB(COL_NONE)
-  else
+  if (FState <> nil) and FState.haveCurrent then
   begin
     stage := FState.StaleStage;
     age := FState.AgeMinutes;
-    bg := LevelColor(FState.current.level);
-    if stage <> ssFresh then
-      bg := Mix(bg, RGB(COL_STALE),
-        0.6 + 0.3 * EnsureRange(age / STALE_LOST_MINUTES, 0, 1));
   end;
+  bg := TileColor(FState);
   Canvas.Brush.Style := bsSolid;
   Canvas.Brush.Color := bg;
   Canvas.FillRect(r);

@@ -4,6 +4,21 @@
 LAZBUILD ?= lazbuild
 BUILD_MODE ?= Release
 
+# Unix: the macOS installer leaves lazbuild in /Applications/lazarus and
+# fpcupdeluxe keeps it under ~/fpcupdeluxe, neither on PATH. Try those, as
+# Trndi's own Makefile does, when LAZBUILD was not set and PATH has none.
+ifneq ($(OS),Windows_NT)
+  ifeq ($(origin LAZBUILD),file)
+    ifeq ($(shell command -v lazbuild 2>/dev/null),)
+      LAZBUILD_FOUND := $(firstword $(wildcard /Applications/lazarus/lazbuild \
+        $(HOME)/fpcupdeluxe/lazarus/lazbuild))
+      ifneq ($(LAZBUILD_FOUND),)
+        LAZBUILD := $(LAZBUILD_FOUND)
+      endif
+    endif
+  endif
+endif
+
 # Widgetset per OS, as Trndi's own Makefile picks it. Override on the command
 # line, e.g. `make WIDGETSET=gtk2`.
 ifeq ($(OS),Windows_NT)
@@ -17,7 +32,23 @@ else
   BIN := bin/trndi-multi
 endif
 
-LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)"
+# macOS linker. Apple's ld from Xcode/CLT 27 refuses the Objective-C method
+# lists FPC 3.2.x emits ("malformed method list atom"), in the LCL as much as
+# in our units, and -ld_classic is gone. When LLVM's ld64.lld is installed
+# (brew install lld), link through Trndi's shim instead: -FD makes FPC run
+# vendor/trndi/tools/darwin-lld/ld, which translates the ld64-only flags and
+# execs $(LD64_LLD). Set LD64_LLD= (empty) to use Apple's ld regardless.
+ifeq ($(shell uname -s),Darwin)
+  LD64_LLD ?= $(shell command -v ld64.lld 2>/dev/null || \
+    ls /opt/homebrew/bin/ld64.lld /usr/local/bin/ld64.lld 2>/dev/null | head -n1)
+  export LD64_LLD
+  DARWIN_LD_FLAGS := $(if $(strip $(LD64_LLD)),--opt=-FD$(CURDIR)/vendor/trndi/tools/darwin-lld)
+  # FPC 3.2.x's DWARF 3 writer stops with an internal error on Objective-C
+  # classes; the Debug mode asks for DWARF 3, and a later -gw2 wins.
+  DARWIN_DEBUG_FLAGS := --opt=-gw2
+endif
+
+LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)" $(DARWIN_LD_FLAGS)
 
 # Artwork. LOGO is the master; TrndiMulti.png is the square app icon it is
 # normalised into (for the macOS bundle and the Linux hicolor icon) and
@@ -42,12 +73,14 @@ help:
 	@echo "  icon      Rebuild TrndiMulti.png/.ico from \$$(LOGO) (needs ImageMagick)"
 	@echo "  install   Copy the binary to \$$(PREFIX)/bin (default /usr/local); on Linux/BSD also the desktop entry and icon"
 	@echo "Current: WIDGETSET=$(WIDGETSET) BUILD_MODE=$(BUILD_MODE) LOGO=$(LOGO)"
+	@echo "         LAZBUILD=$(LAZBUILD) LD64_LLD=$(LD64_LLD)"
 
 build:
 	$(LAZBUILD) $(LAZFLAGS) TrndiMulti.lpi
 
 debug:
-	$(LAZBUILD) --widgetset=$(WIDGETSET) --build-mode=Debug TrndiMulti.lpi
+	$(LAZBUILD) --widgetset=$(WIDGETSET) --build-mode=Debug $(DARWIN_LD_FLAGS) \
+	  $(DARWIN_DEBUG_FLAGS) TrndiMulti.lpi
 
 rebuild:
 	$(LAZBUILD) -B $(LAZFLAGS) TrndiMulti.lpi

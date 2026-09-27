@@ -68,7 +68,7 @@ help:
 	@echo "  build     Release build (default; honors BUILD_MODE and WIDGETSET)"
 	@echo "  debug     Debug build (range checks, heaptrc, DWARF)"
 	@echo "  rebuild   Release build with every unit recompiled (-B)"
-	@echo "  run       Build, then start it"
+	@echo "  run       Build, then start it (RUN_ARGS forwards arguments, e.g. RUN_ARGS=--kiosk)"
 	@echo "  clean     Remove lib/, bin/ and the generated project resource"
 	@echo "  icon      Rebuild TrndiMulti.png/.ico from \$$(LOGO) (needs ImageMagick)"
 	@echo "  install   Copy the binary to \$$(PREFIX)/bin (default /usr/local); on Linux/BSD also the desktop entry and icon"
@@ -85,8 +85,9 @@ debug:
 rebuild:
 	$(LAZBUILD) -B $(LAZFLAGS) TrndiMulti.lpi
 
+# RUN_ARGS goes to the program, e.g. make run RUN_ARGS="--kiosk --fullscreen".
 run: build
-	./$(BIN)
+	./$(BIN) $(RUN_ARGS)
 
 clean:
 	rm -rf lib bin

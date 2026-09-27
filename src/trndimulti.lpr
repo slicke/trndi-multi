@@ -83,6 +83,9 @@ begin
   // Initialize is what loads MAINICON into Application.Icon; take the logo
   // out of it here, on the main thread, before the report's worker asks.
   PrepareLogo;
+  // macOS: the .app's own icon in the Dock, not MAINICON (the development
+  // bundle has its own artwork).
+  ShowBundleIcon;
   // The medical disclaimer before any reading is drawn, as Trndi does.
   // Declined: nothing else happens.
   if not TermsAccepted then

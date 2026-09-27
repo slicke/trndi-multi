@@ -9,3 +9,4 @@ trndi.log
 # project resource that carries MAINICON, and its copy of the icon.
 src/trndimulti.res
 src/trndimulti.ico
+.DS_Store

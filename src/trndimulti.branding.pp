@@ -53,6 +53,9 @@
 unit trndimulti.branding;
 
 {$mode objfpc}{$H+}
+{$IFDEF DARWIN}
+{$modeswitch objectivec1}
+{$ENDIF}
 
 interface
 
@@ -68,10 +71,18 @@ procedure PrepareLogo;
     broken image. }
 function LogoDataUri: string;
 
+{** macOS: when this runs as an .app, show the bundle's own icon in the Dock
+    instead of MAINICON, as Trndi does. The LCL pushes MAINICON to the Dock
+    in Application.Initialize, over the bundle's CFBundleIconFile, so the
+    development bundle (make run) would otherwise wear the release artwork
+    while running. A bare binary has no bundle icon and keeps MAINICON.
+    Call once after Application.Initialize. A no-op elsewhere. }
+procedure ShowBundleIcon;
+
 implementation
 
 uses
-SysUtils, Classes, Graphics, Forms, base64;
+SysUtils, Classes, Graphics, Forms, base64{$IFDEF DARWIN}, CocoaAll{$ENDIF};
 
 var
   LogoUri: string = '';
@@ -146,6 +157,16 @@ end;
 function LogoDataUri: string;
 begin
   Result := LogoUri;
+end;
+
+procedure ShowBundleIcon;
+begin
+  {$IFDEF DARWIN}
+  // nil hands the Dock back to CFBundleIconFile. Only Application.Icon
+  // changing pushes MAINICON again, and nothing here changes it.
+  if NSBundle.mainBundle.bundleIdentifier <> nil then
+    NSApp.setApplicationIconImage(nil);
+  {$ENDIF}
 end;
 
 end.

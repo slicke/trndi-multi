@@ -4,6 +4,21 @@
 LAZBUILD ?= lazbuild
 BUILD_MODE ?= Release
 
+# Unix: the macOS installer leaves lazbuild in /Applications/lazarus and
+# fpcupdeluxe keeps it under ~/fpcupdeluxe, neither on PATH. Try those, as
+# Trndi's own Makefile does, when LAZBUILD was not set and PATH has none.
+ifneq ($(OS),Windows_NT)
+  ifeq ($(origin LAZBUILD),file)
+    ifeq ($(shell command -v lazbuild 2>/dev/null),)
+      LAZBUILD_FOUND := $(firstword $(wildcard /Applications/lazarus/lazbuild \
+        $(HOME)/fpcupdeluxe/lazarus/lazbuild))
+      ifneq ($(LAZBUILD_FOUND),)
+        LAZBUILD := $(LAZBUILD_FOUND)
+      endif
+    endif
+  endif
+endif
+
 # Widgetset per OS, as Trndi's own Makefile picks it. Override on the command
 # line, e.g. `make WIDGETSET=gtk2`.
 ifeq ($(OS),Windows_NT)
@@ -17,7 +32,37 @@ else
   BIN := bin/trndi-multi
 endif
 
-LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)"
+# macOS linker. Apple's ld from Xcode/CLT 27 refuses the Objective-C method
+# lists FPC 3.2.x emits ("malformed method list atom"), in the LCL as much as
+# in our units, and -ld_classic is gone. When LLVM's ld64.lld is installed
+# (brew install lld), link through Trndi's shim instead: -FD makes FPC run
+# vendor/trndi/tools/darwin-lld/ld, which translates the ld64-only flags and
+# execs $(LD64_LLD). Set LD64_LLD= (empty) to use Apple's ld regardless.
+ifeq ($(shell uname -s),Darwin)
+  LD64_LLD ?= $(shell command -v ld64.lld 2>/dev/null || \
+    ls /opt/homebrew/bin/ld64.lld /usr/local/bin/ld64.lld 2>/dev/null | head -n1)
+  export LD64_LLD
+  DARWIN_LD_FLAGS := $(if $(strip $(LD64_LLD)),--opt=-FD$(CURDIR)/vendor/trndi/tools/darwin-lld)
+  # FPC 3.2.x's DWARF 3 writer stops with an internal error on Objective-C
+  # classes; the Debug mode asks for DWARF 3, and a later -gw2 wins.
+  DARWIN_DEBUG_FLAGS := --opt=-gw2
+  # The development bundle 'make run' starts. Its own identity keeps it
+  # apart from an installed Trndi Multi in the Dock, Spotlight and the
+  # permission prompts; the accounts are Trndi's either way (read from
+  # com.slicke.Trndi, see trndimulti.accounts).
+  DEV_APP := bin/trndi-multi.app
+  DEV_BUNDLE_ID ?= com.slicke.trndi-multi.dev
+  DEV_BUNDLE_NAME ?= Trndi Multi Dev
+  # Its own artwork too, in Finder and (see trndimulti.branding) the Dock,
+  # so a development build is never mistaken for the installed one.
+  DEV_BUNDLE_ICON ?= TrndiMulti-dev.png
+endif
+# Wrap $(BIN) in $(DEV_APP); used by 'app' and, on macOS, 'debug'.
+WRAP_DEV_APP = APP_ID="$(DEV_BUNDLE_ID)" APP_NAME="$(DEV_BUNDLE_NAME)" \
+  ICON_SRC="$(DEV_BUNDLE_ICON)" dist/macos_bundle.sh $(BIN) $(DEV_APP) && \
+  echo "Wrapped $(BIN) in $(DEV_APP) ($(DEV_BUNDLE_ID))"
+
+LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)" $(DARWIN_LD_FLAGS)
 
 # Artwork. LOGO is the master; TrndiMulti.png is the square app icon it is
 # normalised into (for the macOS bundle and the Linux hicolor icon) and
@@ -28,32 +73,63 @@ LAZFLAGS = --widgetset=$(WIDGETSET) --build-mode="$(BUILD_MODE)"
 LOGO ?= trndi-multi.png
 MAGICK ?= $(shell command -v magick 2>/dev/null || command -v convert 2>/dev/null)
 
-.PHONY: all build debug rebuild run clean icon install uninstall help
+.PHONY: all build debug rebuild run app clean icon install uninstall help
 
 all: build
 
 help:
 	@echo "Targets:"
 	@echo "  build     Release build (default; honors BUILD_MODE and WIDGETSET)"
-	@echo "  debug     Debug build (range checks, heaptrc, DWARF)"
+	@echo "  debug     Debug build (range checks, heaptrc, DWARF); on macOS also wrapped in $(DEV_APP)"
 	@echo "  rebuild   Release build with every unit recompiled (-B)"
-	@echo "  run       Build, then start it"
+	@echo "  run       Build, then start it (RUN_ARGS forwards arguments, e.g. RUN_ARGS=--kiosk);"
+	@echo "            on macOS as the development bundle $(DEV_APP)"
+	@echo "  app       macOS: build and wrap the binary in $(DEV_APP) ($(DEV_BUNDLE_NAME), icon $(DEV_BUNDLE_ICON))"
 	@echo "  clean     Remove lib/, bin/ and the generated project resource"
 	@echo "  icon      Rebuild TrndiMulti.png/.ico from \$$(LOGO) (needs ImageMagick)"
 	@echo "  install   Copy the binary to \$$(PREFIX)/bin (default /usr/local); on Linux/BSD also the desktop entry and icon"
 	@echo "Current: WIDGETSET=$(WIDGETSET) BUILD_MODE=$(BUILD_MODE) LOGO=$(LOGO)"
+	@echo "         LAZBUILD=$(LAZBUILD) LD64_LLD=$(LD64_LLD)"
 
 build:
 	$(LAZBUILD) $(LAZFLAGS) TrndiMulti.lpi
 
+# On macOS the debug binary is also wrapped in the development bundle, so
+# 'open bin/trndi-multi.app' (or Finder) starts the build just made.
 debug:
-	$(LAZBUILD) --widgetset=$(WIDGETSET) --build-mode=Debug TrndiMulti.lpi
+	$(LAZBUILD) --widgetset=$(WIDGETSET) --build-mode=Debug $(DARWIN_LD_FLAGS) \
+	  $(DARWIN_DEBUG_FLAGS) TrndiMulti.lpi
+ifeq ($(shell uname -s),Darwin)
+	@$(WRAP_DEV_APP)
+endif
 
 rebuild:
 	$(LAZBUILD) -B $(LAZFLAGS) TrndiMulti.lpi
 
+# RUN_ARGS goes to the program, e.g. make run RUN_ARGS="--kiosk --fullscreen".
+# On macOS the development bundle is launched through LaunchServices (open),
+# so it runs with a bundle identity, Dock icon, Retina backing and activation
+# like a Finder launch, which the bare binary started from a shell lacks. -n
+# starts a new instance even if one is running (otherwise open only
+# activates it), -W waits for it to quit, and --stdout/--stderr keep its
+# output in this terminal. Without a terminal (CI, editor tasks) the
+# bundle's executable is run directly instead.
+ifeq ($(shell uname -s),Darwin)
+run: app
+	@if tty=$$(tty 2>/dev/null); then \
+	  open -n -W --stdout "$$tty" --stderr "$$tty" "$(DEV_APP)" --args $(RUN_ARGS); \
+	else \
+	  "$(DEV_APP)/Contents/MacOS/trndi-multi" $(RUN_ARGS); \
+	fi
+else
 run: build
-	./$(BIN)
+	./$(BIN) $(RUN_ARGS)
+endif
+
+# Rebuilt from the binary on every call; lazbuild decides whether that changed.
+app: build
+	@if [ "$$(uname -s)" != Darwin ]; then echo "'make app' is macOS only"; exit 1; fi
+	@$(WRAP_DEV_APP)
 
 clean:
 	rm -rf lib bin

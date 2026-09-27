@@ -17,9 +17,9 @@ concurrency:
 # ending in an artifact named after the platform; publish then turns every
 # push to main that built green into a rolling build-<N> release, as
 # trndi-cli does. The Lazarus toolchain comes from the same places as
-# Trndi's own CI: the pinned SourceForge .debs through the vendored
-# setup-lazarus action on Linux, the Lazarus installer on Windows and
-# MacPorts on macOS.
+# Trndi's own CI, pinned to the Lazarus release files on SourceForge on
+# every platform: the .debs through the vendored setup-lazarus action on
+# Linux, the installer on Windows and the FPC dmg plus Lazarus zip on macOS.
 jobs:
   # ===================== VERSION =====================
   # The number the binaries are stamped with (src/trndimulti.buildinfo.pp, through the
@@ -163,27 +163,90 @@ jobs:
         with:
           submodules: recursive
 
-      # MacPorts builds fpc and lazarus from source, which is what makes this
-      # the slowest leg; it is also the route Trndi's own macOS build takes.
-      - name: Install MacPorts, FPC and Lazarus
+      # The official Lazarus release files, as Trndi's CI installs them,
+      # rather than MacPorts: MacPorts rebuilds its fpc port on its own
+      # schedule (3.2.2_7 on 2026-09-17 broke fpcunit for Trndi), and the
+      # pin keeps the compiler the same as a developer's. Bump the two URLs
+      # together with Trndi's pin and the Linux/Windows ones.
+      - name: Install Lazarus/FPC toolchain
+        env:
+          FPC_DMG_URL: https://sourceforge.net/projects/lazarus/files/Lazarus%20macOS%20aarch64/Lazarus%204.8/fpc-3.2.4rc1a.intelarm64-macosx.dmg/download
+          LAZ_ZIP_URL: https://sourceforge.net/projects/lazarus/files/Lazarus%20macOS%20aarch64/Lazarus%204.8/lazarus-darwin-aarch64-4.8.zip/download
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
           set -euo pipefail
-          OSMAJOR="$(sw_vers -productVersion | cut -d. -f1)"
-          case "$OSMAJOR" in
-            14) OSNAME="14-Sonoma" ;;
-            15) OSNAME="15-Sequoia" ;;
-            *) echo "Unsupported macOS version: ${OSMAJOR}" >&2; exit 1 ;;
-          esac
+          # The FPC installer wants the Xcode command line tools; the runner
+          # image ships them. Show which SDK the compiler will pick up.
+          xcode-select -p
+          xcrun --show-sdk-path
+
           CURL_RETRY="--retry 5 --retry-delay 5 --retry-all-errors"
-          PKG_URL="$(curl -fsSL $CURL_RETRY https://www.macports.org/install.php | grep -Eo "https://[^\"[:space:]]*MacPorts-[0-9.]+-${OSNAME}\.pkg" | head -n1 || true)"
-          [ -n "$PKG_URL" ] || { echo "Failed to resolve MacPorts pkg URL" >&2; exit 1; }
-          curl -fsSL $CURL_RETRY -o MacPorts.pkg "$PKG_URL"
-          sudo installer -pkg MacPorts.pkg -target /
-          export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
-          sudo port -v selfupdate
-          # create-dmg for the .dmg; the DMG background needs swift, which the
-          # runner's Xcode already provides.
-          sudo port -N install fpc lazarus gmake create-dmg
+          # Outside the checkout, so no installer can ever be picked up
+          # beside the build's own files (Trndi's build-249 shipped its
+          # fpc.dmg and lazarus.zip as release assets that way).
+          DL="$RUNNER_TEMP/toolchain"
+          mkdir -p "$DL"
+          curl -fsSL $CURL_RETRY -o "$DL/fpc.dmg" "$FPC_DMG_URL"
+          curl -fsSL $CURL_RETRY -o "$DL/lazarus.zip" "$LAZ_ZIP_URL"
+
+          # FPC: a .pkg inside the dmg; installs under /usr/local and writes
+          # /etc/fpc.cfg.
+          MNT="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DL/fpc.dmg"
+          PKG="$(find "$MNT" -maxdepth 2 -name '*.pkg' | head -n1)"
+          [ -n "$PKG" ] || { echo "No .pkg found in the FPC dmg" >&2; ls -R "$MNT" >&2; exit 1; }
+          sudo installer -pkg "$PKG" -target /
+          hdiutil detach "$MNT"
+
+          # gmake and create-dmg (dist/macos.sh) from Homebrew.
+          brew install make create-dmg
+
+          # Lazarus at /Applications/lazarus, where the Makefile also looks.
+          xattr -cr "$DL/lazarus.zip"
+          EXTRACT="$(mktemp -d)"
+          unzip -q "$DL/lazarus.zip" -d "$EXTRACT"
+          LB="$(find "$EXTRACT" -maxdepth 3 -name lazbuild -type f | head -n1)"
+          [ -n "$LB" ] || { echo "lazbuild not found in the Lazarus zip" >&2; find "$EXTRACT" -maxdepth 2 >&2; exit 1; }
+          sudo rm -rf /Applications/lazarus
+          sudo mv "$(dirname "$LB")" /Applications/lazarus
+          sudo xattr -cr /Applications/lazarus
+
+          # The zip's lazarus.cfg points at a portable config dir with no
+          # environmentoptions.xml in it (the IDE writes that on first
+          # start), so a bare lazbuild falls back to /Developer/lazarus/ and
+          # stops. Write both with absolute paths, as Trndi's CI does.
+          GMAKE="$(brew --prefix)/bin/gmake"
+          sudo mkdir -p /Applications/lazarus/config
+          printf -- '--pcp=/Applications/lazarus/config\n--lazarusdir=/Applications/lazarus\n' \
+            | sudo tee /Applications/lazarus/lazarus.cfg >/dev/null
+          sudo tee /Applications/lazarus/config/environmentoptions.xml >/dev/null <<'XML'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <CONFIG>
+            <EnvironmentOptions>
+              <Version Value="112" Lazarus="4.8"/>
+              <LazarusDirectory Value="/Applications/lazarus/"/>
+              <CompilerFilename Value="/usr/local/bin/fpc"/>
+              <FPCSourceDirectory Value="$(LazarusDir)/fpc/$(FPCVer)/sources/"/>
+              <MakeFilename Value="__GMAKE__"/>
+              <TestBuildDirectory Value="$ENV(TMPDIR)"/>
+            </EnvironmentOptions>
+          </CONFIG>
+          XML
+          sudo sed -i '' -e 's|__GMAKE__|'"$GMAKE"'|' -e 's/^          //' \
+            /Applications/lazarus/config/environmentoptions.xml
+          sudo chown -R "$(id -u):$(id -g)" /Applications/lazarus/config
+
+          # lazbuild, fpc, gmake and create-dmg for the steps below.
+          echo "/Applications/lazarus" >> "$GITHUB_PATH"
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+          export PATH="/Applications/lazarus:/usr/local/bin:$(brew --prefix)/bin:$PATH"
+          fpc -iV
+          lazbuild --version
+          gmake --version | head -n1
+          command -v create-dmg
 
       # A bare Cocoa binary has no bundle to be activated through, so the
       # window never comes to the front. dist/macos.sh wraps it in
@@ -202,7 +265,6 @@ jobs:
           BUILD_NUMBER: ${{ github.event_name == 'push' && needs.version.outputs.num || github.run_number }}
         run: |
           set -euo pipefail
-          export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
           gmake
           ./dist/macos.sh
           mv dist/trndi-multi-macos-arm64.dmg .
@@ -227,9 +289,12 @@ jobs:
         with:
           fetch-depth: 0   # full history, for the changelog
 
+      # Not into dist/: that is a directory of the checkout, and the
+      # dist/*/* below would publish its files (dist/linux's desktop entry
+      # went out with build-112) beside the artifacts.
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: release-assets
 
       - name: Create release
         env:
@@ -256,4 +321,4 @@ jobs:
           gh release create "build-${NUM}" \
             --title "Build ${NUM}" \
             --notes-file notes.md \
-            dist/*/*
+            release-assets/*/*

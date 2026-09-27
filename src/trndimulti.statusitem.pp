@@ -93,7 +93,7 @@ implementation
 
 {$IFDEF DARWIN}
 uses
-CocoaAll, CGBase, trndi.native.wakebridge;
+CocoaAll, CGBase, Math, trndi.native.wakebridge;
 
 {------------------------------------------------------------------------------
   One entry per key -- item, text, colour, menu and menu target -- kept for
@@ -126,6 +126,17 @@ const
   // exported constants are not in CocoaAll.
   SITEM_WEIGHT_VALUE  = 0.3;
   SITEM_WEIGHT_FADED  = 0.0;
+
+{ Apple frameworks expect FP exceptions masked. When FPC adopts a GCD thread
+  (first threadvar access -- e.g. the stack check in a Debug build's
+  prologue) it unmasks FP traps there, and the pool thread keeps that state:
+  later CoreImage or CFNetwork work on it dies with an FPC runtime error.
+  drawPill can be called off the main thread, so it masks them first. }
+procedure MaskFPUExceptionsForAppleFrameworks;
+begin
+  SetExceptionMask([exInvalidOp, exDenormalized, exZeroDivide,
+    exOverflow, exUnderflow, exPrecision]);
+end;
 
 type
   TStatusEntry = class;
@@ -253,6 +264,7 @@ var
   path: NSBezierPath;
   font: NSFont;
 begin
+  MaskFPUExceptionsForAppleFrameworks;
   e := TStatusEntry(entry);
   if e.text = nil then
     Exit;

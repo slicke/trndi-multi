@@ -6,4 +6,4 @@
 	url = https://gitlab.com/retrofoxed/pixie.git
 [submodule "vendor/lazink"]
 	path = vendor/lazink
-	url = https://github.com/TonyStone31/LazInk
+	url = https://github.com/slicke/LazInk.git

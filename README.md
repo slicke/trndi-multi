@@ -49,7 +49,7 @@ _Save report_ in the menu writes a PDF with one section per account: the latest 
 
 The day's readings are fetched through each account's existing connection (a second login would revoke a CareLink token), so the wall pauses its own polling for the few seconds the report takes and resumes when it is saved. Dexcom Share serves at most a day, which is why the report covers a day; time in range is the share of readings, not of time, so a gap in the data is not counted either way. Every page carries the medical disclaimer.
 
-The dialogs are drawn by [LazInk](https://github.com/TonyStone31/LazInk), HTML and Markdown controls for Lazarus that paint on the ordinary canvas, vendored as a submodule (`vendor/lazink`, 0BSD). The report's PDF is written by the exporter of [Pixie](https://gitlab.com/retrofoxed/pixie), a pure-Pascal HTML/CSS engine (`vendor/pixie`, MIT; archived upstream, kept for this one job). Neither adds a runtime dependency.
+The dialogs are drawn by [LazInk](https://github.com/TonyStone31/LazInk), HTML and Markdown controls for Lazarus that paint on the ordinary canvas, vendored as a submodule (`vendor/lazink`, 0BSD). The report is laid out in Pascal and written by FPC's own fcl-pdf, with [DejaVu Sans](https://dejavu-fonts.github.io/) (`src/fonts`, Bitstream Vera license) embedded as a subset so the figures and trend arrows come out the same on every platform. Neither adds a runtime dependency. `tests/report` builds a small program that writes the report for made-up accounts, for looking at the layout without a backend.
 
 ## Keys and flags
 

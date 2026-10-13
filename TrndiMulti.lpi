@@ -17,6 +17,11 @@
       <Icon Value="0"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
+      <!-- The report's fonts, embedded as RCDATA (see trndimulti.report). -->
+      <Resources Count="2">
+        <Resource_0 FileName="$(ProjPath)src/fonts/DejaVuSans.ttf" Type="RCDATA" ResourceName="DEJAVUSANS"/>
+        <Resource_1 FileName="$(ProjPath)src/fonts/DejaVuSans-Bold.ttf" Type="RCDATA" ResourceName="DEJAVUSANS_BOLD"/>
+      </Resources>
     </General>
     <BuildModes Count="2">
       <Item1 Name="Release" Default="True"/>
@@ -29,7 +34,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="vendor/trndi/inc;vendor/lazink"/>
-            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/pixie/source/common;vendor/pixie/source/htmlview;vendor/pixie/source/markdown;vendor/pixie/source/svgview;vendor/lazink"/>
+            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/lazink"/>
             <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -162,7 +167,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="vendor/trndi/inc;vendor/lazink"/>
-      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/pixie/source/common;vendor/pixie/source/htmlview;vendor/pixie/source/markdown;vendor/pixie/source/svgview;vendor/lazink"/>
+      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/lazink"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>

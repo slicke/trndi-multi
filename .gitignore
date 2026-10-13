@@ -10,3 +10,5 @@ trndi.log
 src/trndimulti.res
 src/trndimulti.ico
 .DS_Store
+tests/report/reporttest
+tests/report/reporttest.res

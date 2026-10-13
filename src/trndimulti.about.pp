@@ -77,7 +77,7 @@ const
   DISCLAIMER_URL = 'https://github.com/slicke/trndi/blob/main/DISCLAIMER.md';
   GPL_URL = 'https://www.gnu.org/licenses/gpl-3.0.html';
   LAZINK_URL = 'https://github.com/TonyStone31/LazInk';
-  PIXIE_URL = 'https://gitlab.com/retrofoxed/pixie';
+  DEJAVU_URL = 'https://dejavu-fonts.github.io/';
 
 type
   TfAbout = class(TForm)
@@ -142,8 +142,8 @@ begin
     'A companion to [Trndi](' + TRNDI_URL + '), whose API and settings ' +
     'layer it is built on and whose accounts it shows. This window is ' +
     'drawn by [LazInk](' + LAZINK_URL + '), HTML and Markdown controls ' +
-    'for Lazarus (0BSD); the reports by [Pixie](' + PIXIE_URL + '), an ' +
-    'HTML engine for Free Pascal (MIT, SoftPerfect).' +
+    'for Lazarus (0BSD); the reports are set in [DejaVu Sans](' +
+    DEJAVU_URL + ') (Bitstream Vera license) by Free Pascal''s fcl-pdf.' +
     LineEnding + LineEnding +
     'Settings: `' + SettingsLocation + '`';
 end;

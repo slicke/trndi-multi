@@ -135,7 +135,7 @@ type
 
 var
   // The one check in flight, or nil. Main thread only.
-  Current: TUpdateCheckThread = nil;
+  Running: TUpdateCheckThread = nil;
   // Set by AbandonUpdateCheck: the result has nowhere to go.
   Abandoned: boolean = false;
 
@@ -350,7 +350,7 @@ procedure CheckForUpdates(manual: boolean);
 var
   at: TDateTime;
 begin
-  if Current <> nil then
+  if Running <> nil then
     exit;
   if not manual then
   begin
@@ -359,13 +359,13 @@ begin
       exit;
   end;
   Abandoned := false;
-  Current := TUpdateCheckThread.Create(manual);
+  Running := TUpdateCheckThread.Create(manual);
 end;
 
 procedure AbandonUpdateCheck;
 begin
   Abandoned := true;
-  Current := nil;
+  Running := nil;
 end;
 
 {------------------------------------------------------------------------------
@@ -500,8 +500,8 @@ procedure TUpdateCheckThread.ApplyResult;
 var
   msg: string;
 begin
-  if Current = Self then
-    Current := nil;
+  if Running = Self then
+    Running := nil;
   if Abandoned or Application.Terminated then
     exit;
 

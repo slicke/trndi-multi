@@ -344,6 +344,31 @@ end;
   The sheet
  ------------------------------------------------------------------------------}
 
+{$IF FPC_FULLVERSION < 30203}
+// FPC 3.2.2's fcl-pdf (the Windows and Linux amd64 builds) sets fonts in
+// whole points only and has no SetLineJoinStyle.
+type
+  TPDFRoundJoin = class(TPDFObject)
+  protected
+    procedure Write(const AStream: TStream); override;
+  end;
+
+procedure TPDFRoundJoin.Write(const AStream: TStream);
+begin
+  WriteString('1 j' + CRLF, AStream);
+end;
+
+function FontSize(size: double): integer;
+begin
+  Result := Round(size);
+end;
+{$ELSE}
+function FontSize(size: double): double;
+begin
+  Result := size;
+end;
+{$ENDIF}
+
 // fcl-pdf's font subsetter reads the font back from a file, so the
 // embedded font is written out for the report's duration and the ruler
 // reads the same file.
@@ -481,7 +506,7 @@ begin
   w := 0;
   for i := 1 to Length(us) do
     w := w + m.GetAdvanceWidth(m.GetGlyphIndex(Word(us[i])));
-  Result := w * size / m.Head.UnitsPerEm;
+  Result := w * FontSize(size) / m.Head.UnitsPerEm;
 end;
 
 function TSheet.LineHeight(size: double): double;
@@ -499,11 +524,11 @@ begin
     exit;
   m := Metrics(bold);
   // WriteText places the baseline; the caller thinks in line tops.
-  ascent := m.Ascender * size / m.Head.UnitsPerEm;
+  ascent := m.Ascender * FontSize(size) / m.Head.UnitsPerEm;
   if bold then
-    FPage.SetFont(FBold, size)
+    FPage.SetFont(FBold, FontSize(size))
   else
-    FPage.SetFont(FRegular, size);
+    FPage.SetFont(FRegular, FontSize(size));
   FPage.SetColor(colour, false);
   FPage.WriteText(x, y + (LineHeight(size) - size) / 2 + ascent, s);
 end;
@@ -602,7 +627,11 @@ begin
     exit;
   FPage.SetColor(colour, true);
   FPage.SetPenStyle(ppsSolid, width);
+  {$IF FPC_FULLVERSION < 30203}
+  FPage.AddObject(TPDFRoundJoin.Create(FDoc));
+  {$ELSE}
   FPage.SetLineJoinStyle(pljsRoundJoin);
+  {$ENDIF}
   // DrawPolyLine only builds the path; without the stroke the next fill
   // would paint the whole of it.
   FPage.DrawPolyLine(pts, width);

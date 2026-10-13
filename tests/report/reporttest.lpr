@@ -94,6 +94,12 @@ begin
   s.lo := 70; s.hi := 180; s.bottom := 80; s.top := 160;
   s.history := Day(fromT, toT, 5, 1);
   s.acct.current := s.history[High(s.history)];
+  // As Dexcom Share hands the wall its reading: no delta of its own, so the
+  // report has to take it from the history.
+  s.acct.current.Init(mgdl, 'test');
+  s.acct.current.update(s.history[High(s.history)].convert(mgdl), BGPrimary, mgdl);
+  s.acct.current.date := s.history[High(s.history)].date;
+  s.acct.current.trend := TdFlat;
   s.acct.haveCurrent := true;
   SetLength(secs, 1); secs[0] := s;
 

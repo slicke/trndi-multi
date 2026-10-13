@@ -927,6 +927,32 @@ end;
   The sections
  ------------------------------------------------------------------------------}
 
+// The change since the reading before, signed and with the unit. A backend
+// that fetched one reading at a time leaves the delta empty (Dexcom Share
+// does, and BG_NO_VAL formats as a nonsense figure); the report has the
+// day's history, so the change is taken from there when its newest reading
+// is the current one. With nothing to count from, the unit stands alone,
+// as the tile and the detail view show it.
+function DeltaText(const s: TReportSection; u: BGUnit): string;
+var
+  n: integer;
+  r: BGReading;
+begin
+  if not s.acct.current.deltaEmpty then
+    Exit(s.acct.current.format(u, BG_MSG_SIGNED, BGDelta));
+  n := Length(s.history);
+  if (n >= 2) and (MinutesBetween(s.history[n - 1].date, s.acct.current.date) < 1) then
+  begin
+    // Through a reading of its own, so the sign and the decimals come out
+    // exactly as the tile formats them.
+    r.Init(mgdl, 'report');
+    r.update(s.history[n - 1].convert(mgdl),
+      s.history[n - 1].convert(mgdl) - s.history[n - 2].convert(mgdl), mgdl);
+    Exit(r.format(u, BG_MSG_SIGNED, BGDelta));
+  end;
+  Result := BG_UNIT_NAMES[u];
+end;
+
 procedure Section(sh: TSheet; const s: TReportSection; u: BGUnit;
   const fromT, toT: TDateTime);
 const
@@ -987,8 +1013,8 @@ begin
     sh.RoundRect(x, sh.Cur, w, sh.LineHeight(22) + 2, 4, CssToArgb(LevelCss(LevelOf(v, s))));
     sh.Text(x + 8, sh.Cur + 1, val, 22, true, $FFFFFF);
     x := x + w + 10;
-    sh.Text(x, sh.Cur + 9, cur.format(u, BG_MSG_SIGNED, BGDelta), 13, false);
-    x := x + sh.TextWidth(cur.format(u, BG_MSG_SIGNED, BGDelta), 13, false) + 10;
+    sh.Text(x, sh.Cur + 9, DeltaText(s, u), 13, false);
+    x := x + sh.TextWidth(DeltaText(s, u), 13, false) + 10;
     sh.Text(x, sh.Cur + 11, 'at ' + Stamp(cur.date), BODY, false, GREY);
     x := x + sh.TextWidth('at ' + Stamp(cur.date), BODY, false) + 10;
     if s.acct.stale or (MinutesBetween(Now, cur.date) > 2 * Max(1, s.interval) + 5) then

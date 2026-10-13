@@ -17,6 +17,14 @@
       <Icon Value="0"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
+      <!-- Windows: a manifest asking for comctl32 v6, so controls get the
+           native visual style instead of the Win95 look. Not DpiAware: the
+           UI is laid out in code with fixed pixel sizes. -->
+      <UseXPManifest Value="True"/>
+      <XPManifest>
+        <TextName Value="slicke.trndi.multi"/>
+        <TextDesc Value="Trndi Multi"/>
+      </XPManifest>
       <!-- The report's fonts, embedded as RCDATA (see trndimulti.report). -->
       <Resources Count="2">
         <Resource_0 FileName="$(ProjPath)src/fonts/DejaVuSans.ttf" Type="RCDATA" ResourceName="DEJAVUSANS"/>

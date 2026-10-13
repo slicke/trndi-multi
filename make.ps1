@@ -13,13 +13,16 @@ param([string]$Target = 'release', [string]$Logo = 'trndi-multi.png')
 
 $ErrorActionPreference = 'Stop'
 
-# Locate lazbuild: PATH first, then the standard Lazarus install.
+# Locate lazbuild: PATH first, then the standard Lazarus install, then an
+# fpcupdeluxe one (as the Makefile does on Unix).
 $lazbuild = (Get-Command lazbuild.exe -ErrorAction SilentlyContinue).Source
-if (-not $lazbuild -and (Test-Path 'C:\lazarus\lazbuild.exe')) {
-    $lazbuild = 'C:\lazarus\lazbuild.exe'
+if (-not $lazbuild) {
+    foreach ($candidate in @('C:\lazarus\lazbuild.exe', 'C:\fpcupdeluxe\lazarus\lazbuild.exe')) {
+        if (Test-Path $candidate) { $lazbuild = $candidate; break }
+    }
 }
 if (-not $lazbuild) {
-    throw 'lazbuild.exe not found on PATH or at C:\lazarus'
+    throw 'lazbuild.exe not found on PATH, at C:\lazarus or at C:\fpcupdeluxe\lazarus'
 }
 
 # Regenerate the committed artwork, as 'make icon' does: the mark trimmed out

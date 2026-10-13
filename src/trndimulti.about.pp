@@ -46,7 +46,7 @@
   asked "which version is that?" when something looks wrong, so the build,
   the toolchain it was made with and the settings file it reads are all
   here in one place, next to the medical disclaimer and the license.
-  Rendered as Markdown by the vendored Pixie engine, as the other dialogs
+  Rendered as Markdown by the vendored LazInk engine, as the other dialogs
   are.
 }
 unit trndimulti.about;
@@ -76,6 +76,7 @@ const
   TRNDI_URL = 'https://github.com/slicke/trndi';
   DISCLAIMER_URL = 'https://github.com/slicke/trndi/blob/main/DISCLAIMER.md';
   GPL_URL = 'https://www.gnu.org/licenses/gpl-3.0.html';
+  LAZINK_URL = 'https://github.com/TonyStone31/LazInk';
   PIXIE_URL = 'https://gitlab.com/retrofoxed/pixie';
 
 type
@@ -139,8 +140,9 @@ begin
     '[Source](' + PROJECT_URL + ') · [Releases](' + RELEASES_URL + ')' +
     LineEnding + LineEnding +
     'A companion to [Trndi](' + TRNDI_URL + '), whose API and settings ' +
-    'layer it is built on and whose accounts it shows. This window and ' +
-    'the reports are rendered with [Pixie](' + PIXIE_URL + '), an ' +
+    'layer it is built on and whose accounts it shows. This window is ' +
+    'drawn by [LazInk](' + LAZINK_URL + '), HTML and Markdown controls ' +
+    'for Lazarus (0BSD); the reports by [Pixie](' + PIXIE_URL + '), an ' +
     'HTML engine for Free Pascal (MIT, SoftPerfect).' +
     LineEnding + LineEnding +
     'Settings: `' + SettingsLocation + '`';

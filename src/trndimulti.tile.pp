@@ -76,7 +76,7 @@ type
   end;
 
 const
-  {** The range palette as CSS, for the Pixie-rendered detail view and
+  {** The range palette as CSS, for the HTML-rendered detail view and
       report: the same colours the tiles are painted in, so a value reads
       the same on paper as on the wall. }
   CSS_RANGE = '#2E7D32';

@@ -49,7 +49,7 @@ _Save report_ in the menu writes a PDF with one section per account: the latest 
 
 The day's readings are fetched through each account's existing connection (a second login would revoke a CareLink token), so the wall pauses its own polling for the few seconds the report takes and resumes when it is saved. Dexcom Share serves at most a day, which is why the report covers a day; time in range is the share of readings, not of time, so a gap in the data is not counted either way. Every page carries the medical disclaimer.
 
-The dialogs and the report are rendered by [Pixie](https://gitlab.com/retrofoxed/pixie), a pure-Pascal HTML/CSS engine vendored as a submodule (`vendor/pixie`, MIT). It draws through the same widgetset as the rest of the window and adds no runtime dependency.
+The dialogs are drawn by [LazInk](https://github.com/TonyStone31/LazInk), HTML and Markdown controls for Lazarus that paint on the ordinary canvas, vendored as a submodule (`vendor/lazink`, 0BSD). The report's PDF is written by the exporter of [Pixie](https://gitlab.com/retrofoxed/pixie), a pure-Pascal HTML/CSS engine (`vendor/pixie`, MIT; archived upstream, kept for this one job). Neither adds a runtime dependency.
 
 ## Keys and flags
 

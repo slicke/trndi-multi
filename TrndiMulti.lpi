@@ -28,8 +28,8 @@
             <Filename Value="bin/trndi-multi"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="vendor/trndi/inc"/>
-            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/pixie/source/common;vendor/pixie/source/htmlview;vendor/pixie/source/markdown;vendor/pixie/source/svgview"/>
+            <IncludeFiles Value="vendor/trndi/inc;vendor/lazink"/>
+            <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/pixie/source/common;vendor/pixie/source/htmlview;vendor/pixie/source/markdown;vendor/pixie/source/svgview;vendor/lazink"/>
             <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -161,8 +161,8 @@
       <Filename Value="bin/trndi-multi"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="vendor/trndi/inc"/>
-      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/pixie/source/common;vendor/pixie/source/htmlview;vendor/pixie/source/markdown;vendor/pixie/source/svgview"/>
+      <IncludeFiles Value="vendor/trndi/inc;vendor/lazink"/>
+      <OtherUnitFiles Value="src;vendor/trndi/units/trndi;vendor/trndi/units/trndi/api;vendor/trndi/units/slicke;vendor/trndi/units/misc;vendor/trndi/units/misc/linutils;vendor/trndi/units/misc/winutils;vendor/trndi/units/misc/nsutils;vendor/pixie/source/common;vendor/pixie/source/htmlview;vendor/pixie/source/markdown;vendor/pixie/source/svgview;vendor/lazink"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>

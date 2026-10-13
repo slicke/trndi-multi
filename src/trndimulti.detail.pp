@@ -43,7 +43,7 @@
   room for. Opened by a left click on the tile (not in kiosk mode: the
   pointer is hidden there and nobody would close it).
 
-  A page rendered by the vendored Pixie engine, as the other dialogs are:
+  A page rendered by the vendored LazInk engine, as the other dialogs are:
   the latest reading with its colour, the account's limits and personal
   target band, how it is polled and when, the backend's full error text
   rather than the tile's abbreviation, and the last hours' readings as a
@@ -71,7 +71,7 @@ implementation
 uses
 SysUtils, DateUtils, Forms, Controls, StdCtrls, ExtCtrls, Graphics,
 trndi.api, trndi.api.registry, trndimulti.accounts, trndimulti.tile,
-trndimulti.markdown, Pixie.Document, Pixie.Element;
+trndimulti.markdown;
 
 const
   // How often the page checks the state; the wall's own tick rate.
@@ -150,8 +150,8 @@ begin
 end;
 
 // The account's target as something safe to show: the host of a site
-// URL, or the account name or e-mail as it is. Pixie never breaks a long
-// unbroken token, so the path and query of a URL stay out of the page.
+// URL, or the account name or e-mail as it is. The renderer may not break
+// a long unbroken token, so the path and query of a URL stay out of the page.
 function TargetLabel(const target: string): string;
 var
   p: integer;
@@ -340,25 +340,19 @@ procedure TfDetail.Rebuild;
 begin
   FSig := Signature;
   FAge := FState.AgeMinutes;
-  // One raw HTML block: a blank line inside it would end the block and
-  // leave the rest as literal text, so the page has no line breaks at all.
-  FPane.Load(PageHtml);
+  FPane.LoadHtml(PageHtml);
 end;
 
 procedure TfDetail.Tick(Sender: TObject);
-var
-  el: TPixieElement;
 begin
   if Signature <> FSig then
     Rebuild
-  else if (FState.AgeMinutes <> FAge) and (FPane.Document <> nil) then
+  else if FState.AgeMinutes <> FAge then
   begin
     // Only the minutes moved: touch the age line up in place rather than
     // reload, which would throw away the reader's scroll position.
     FAge := FState.AgeMinutes;
-    el := FPane.Document.GetElementById('age');
-    if el <> nil then
-      FPane.Document.SetElementText(el, AgeText(FState));
+    FPane.SetText('age', AgeText(FState));
   end;
 end;
 

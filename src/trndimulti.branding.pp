@@ -66,7 +66,7 @@ interface
 procedure PrepareLogo;
 
 {** The logo as an inline PNG for the src of an <img> in any of the
-    Pixie-rendered documents, or an empty string when this binary carries
+    HTML-rendered documents, or an empty string when this binary carries
     no icon — callers then lay out without it rather than showing a
     broken image. }
 function LogoDataUri: string;

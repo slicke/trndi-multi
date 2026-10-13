@@ -39,12 +39,12 @@
 
 
 {**
-  Markdown for the dialogs, rendered by the vendored Pixie engine
-  (vendor/pixie, MIT): the terms, the empty wall, the accounts window's
-  notes and the update dialog are prose with headings, lists and links,
-  which a TLabel or TMemo cannot show. Everything stays Pascal: Pixie is
-  an HTML/CSS layout engine without JavaScript, drawn through the LCL's
-  own widgetset (QPainter, Cairo, Core Graphics or Direct2D).
+  Markdown and HTML for the dialogs, rendered by the vendored LazInk
+  controls (vendor/lazink, 0BSD): the terms, the empty wall, the accounts
+  window's note, the About window, the update prompt and the detail view
+  share one pane class, so each can carry links, emphasis and a table,
+  which a TLabel or TMemo cannot show. Everything stays Pascal: LazInk
+  draws on the TCanvas and needs no browser engine or runtime library.
 }
 unit trndimulti.markdown;
 
@@ -53,28 +53,30 @@ unit trndimulti.markdown;
 interface
 
 uses
-Classes, Controls, Graphics, Pixie.MarkdownView, Pixie.Document;
+Classes, Controls, Graphics, InkPage;
 
 type
-  {** A Markdown view for a dialog: no border, links open in the browser,
-      styled to sit on a given background rather than as a web page. }
-  TMarkdownPane = class(TPixieMarkdownView)
+  {** A page for a dialog: no border, links open in the browser, styled to
+      sit on a given background rather than as a web page. The text is the
+      program's own, so raw HTML inside Markdown is allowed through. }
+  TMarkdownPane = class(TInkPage)
   private
-    FDownX, FDownY: integer;
-    procedure LinkClick(Sender: TObject; El: TObject; const Url: string);
-  protected
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
-      X, Y: integer); override;
-    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
-      X, Y: integer); override;
+    procedure LinkClick(Sender: TObject; const Url: string);
+    procedure Resource(Sender: TObject; const Url: string;
+      Destination: TStream; var Handled: boolean);
   public
     constructor Create(AOwner: TComponent); override;
     {** Colours and base size of the text. @param(extraCss) is appended
         for a caller's own rules. Set before @link(Load). }
     procedure SetTheme(bg, fg: TColor; fontPx: integer;
       const extraCss: string = '');
-    {** Show @param(md); an empty string clears the pane. }
+    {** Show @param(md) as Markdown; an empty string clears the pane. }
     procedure Load(const md: string);
+    {** Show @param(html) as a page. }
+    procedure LoadHtml(const html: string);
+    {** Replace the text of the element with @param(id) in place, keeping
+        the reader's scroll position. False when there is no such element. }
+    function SetText(const id, s: string): boolean;
   end;
 
 {** A TColor as CSS: '#rrggbb'. System colours are resolved first. }
@@ -83,7 +85,7 @@ function CssColor(c: TColor): string;
 implementation
 
 uses
-SysUtils, LCLIntf;
+SysUtils, LCLIntf, base64, InkDOM, InkMarkdown;
 
 function CssColor(c: TColor): string;
 var
@@ -97,17 +99,18 @@ constructor TMarkdownPane.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   BorderStyle := bsNone;
-  // Pixie's GitHub-like stylesheet is for pages; the dialog's own rules
-  // (SetTheme) go through UserCss instead.
-  UseDefaultStyles := false;
-  OnAnchorClick := @LinkClick;
+  MarkdownRawHTML := true;
+  OnLinkClick := @LinkClick;
+  OnResource := @Resource;
 end;
 
 procedure TMarkdownPane.SetTheme(bg, fg: TColor; fontPx: integer;
   const extraCss: string);
 begin
   Color := bg;
-  UserCss :=
+  // LazInk dresses Markdown the way GitHub does, in the control's own
+  // colours; these rules sit on top for the dialog's look.
+  StyleSheet.Text :=
     'html, body { background: ' + CssColor(bg) + '; }' +
     'body { color: ' + CssColor(fg) + '; font-family: sans-serif; ' +
     'font-size: ' + IntToStr(fontPx) + 'px; line-height: 1.4; ' +
@@ -125,41 +128,51 @@ end;
 
 procedure TMarkdownPane.Load(const md: string);
 begin
-  LoadMarkdownFromString(md);
+  LoadMarkdown(md);
 end;
 
-procedure TMarkdownPane.MouseDown(Button: TMouseButton; Shift: TShiftState;
-  X, Y: integer);
+procedure TMarkdownPane.LoadHtml(const html: string);
 begin
-  FDownX := X;
-  FDownY := Y;
-  inherited MouseDown(Button, Shift, X, Y);
+  TextFormat := itfHTML;
+  Source := html;
 end;
 
-// Pixie starts a text selection on every press, and a pointer that moves
-// at all before the release leaves a selection behind, even an empty
-// one; the release is then taken as the end of a drag and never reaches
-// the link. A press and release within a few pixels is a click: drop
-// whatever selection it left before the view decides.
-procedure TMarkdownPane.MouseUp(Button: TMouseButton; Shift: TShiftState;
-  X, Y: integer);
-const
-  CLICK_SLOP = 4;
+function TMarkdownPane.SetText(const id, s: string): boolean;
+var
+  el: TInkNode;
 begin
-  if (Button = mbLeft) and (Document <> nil) and Document.HasSelection and
-    (Abs(X - FDownX) <= CLICK_SLOP) and (Abs(Y - FDownY) <= CLICK_SLOP) then
+  el := nil;
+  if Document <> nil then
+    el := Document.GetElementById(id);
+  Result := el <> nil;
+  if Result then
   begin
-    Document.ClearSelection;
-    Invalidate;
+    el.TextContent := s;
+    DocumentChanged;
   end;
-  inherited MouseUp(Button, Shift, X, Y);
 end;
 
-procedure TMarkdownPane.LinkClick(Sender: TObject; El: TObject;
-  const Url: string);
+procedure TMarkdownPane.LinkClick(Sender: TObject; const Url: string);
 begin
   if Url <> '' then
     OpenURL(Url);
+end;
+
+// LazInk fetches an image's bytes through the host and knows no data:
+// URLs itself; the logo (see trndimulti.branding) is one, so decode it here.
+procedure TMarkdownPane.Resource(Sender: TObject; const Url: string;
+  Destination: TStream; var Handled: boolean);
+const
+  PNG = 'data:image/png;base64,';
+var
+  raw: string;
+begin
+  if Copy(Url, 1, Length(PNG)) <> PNG then
+    exit;
+  raw := DecodeStringBase64(Copy(Url, Length(PNG) + 1, MaxInt));
+  if raw <> '' then
+    Destination.WriteBuffer(raw[1], Length(raw));
+  Handled := true;
 end;
 
 end.

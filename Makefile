@@ -44,8 +44,12 @@ ifeq ($(shell uname -s),Darwin)
   export LD64_LLD
   DARWIN_LD_FLAGS := $(if $(strip $(LD64_LLD)),--opt=-FD$(CURDIR)/vendor/trndi/tools/darwin-lld)
   # FPC 3.2.x's DWARF 3 writer stops with an internal error on Objective-C
-  # classes; the Debug mode asks for DWARF 3, and a later -gw2 wins.
-  DARWIN_DEBUG_FLAGS := --opt=-gw2
+  # classes; the Debug mode asks for DWARF 3, and a later -gw2 wins. The
+  # symbols go to a dSYM beside the binary (-Xg): that is where FPC's
+  # line-info reader finds them on macOS, so heaptrc's leak report and
+  # exception backtraces name files and lines. Windows reads them from
+  # inside the binary, which is what the Debug mode asks for.
+  DARWIN_DEBUG_FLAGS := --opt=-gw2 --opt=-Xg
   # The development bundle 'make run' starts. Its own identity keeps it
   # apart from an installed Trndi Multi in the Dock, Spotlight and the
   # permission prompts; the accounts are Trndi's either way (read from

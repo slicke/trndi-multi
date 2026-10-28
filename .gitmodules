@@ -3,4 +3,4 @@
 	url = https://github.com/slicke/trndi.git
 [submodule "vendor/lazink"]
 	path = vendor/lazink
-	url = https://github.com/slicke/LazInk.git
+	url = https://github.com/TonyStone31/LazInk.git

@@ -226,9 +226,15 @@ begin
   if FState.haveCurrent then
   begin
     cur := FState.current;
-    Result := Result + '<div class="now"><span class="val" style="background:' +
-      LevelCss(cur.level) + '">' + H(cur.format(FUnit, BG_MSG_SHORT)) + ' ' +
-      H(BG_TREND_ARROWS_UTF[cur.trend]) + '</span>';
+    // Stale: slate and struck out, as the tile draws it (see TileColor).
+    if FState.StaleStage = ssFresh then
+      Result := Result + '<div class="now"><span class="val" style="background:' +
+        LevelCss(cur.level) + '">' + H(cur.format(FUnit, BG_MSG_SHORT))
+    else
+      Result := Result + '<div class="now"><span class="val" style="background:' +
+        CSS_STALE + '"><span style="text-decoration: line-through">' +
+        H(cur.format(FUnit, BG_MSG_SHORT)) + '</span>';
+    Result := Result + ' ' + H(BG_TREND_ARROWS_UTF[cur.trend]) + '</span>';
     // The signed delta carries the unit; without one, the unit stands alone.
     if not cur.deltaEmpty then
       Result := Result + '<span class="delta">' +

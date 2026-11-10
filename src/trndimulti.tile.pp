@@ -113,12 +113,14 @@ const
   CSS_HIGH = '#C43C1E';
   CSS_LOW = '#B4142C';
   CSS_NONE = '#45454B';
+  {** A stale reading's fill, as the tile turns. }
+  CSS_STALE = '#404A5C';
 
 {** Window background behind the tiles. }
 function BackgroundColor: TColor;
 
-{** A tile's fill for @param(state): the range colour, faded towards slate
-    as a stale reading ages, or grey without a reading. The menu-bar pills
+{** A tile's fill for @param(state): the range colour, slate for a stale
+    reading, or grey without a reading. The menu-bar pills
     use it too, so a pill matches its tile. }
 function TileColor(state: TAccountState): TColor;
 
@@ -140,9 +142,9 @@ const
   COL_LOW = $B4142C;
   COL_NONE = $45454B;
   COL_BACK = $141418;
-  // A stale tile drifts from its range colour towards this slate as the
-  // reading ages: Trndi's neutral for an outage, and bluer than COL_NONE so
-  // "lost the sensor" and "never had one" stay apart. The stage colours are
+  // A stale tile turns this slate: Trndi's neutral for an outage, bluer than
+  // COL_NONE so "lost the sensor" and "never had one" stay apart, and well
+  // clear of COL_BACK so the tile does not melt into the window. The stage colours are
   // for text on that slate — warm, but never a range colour, so a tile that
   // has gone quiet is not read as a low from across the room.
   COL_STALE = $404A5C;
@@ -188,18 +190,17 @@ begin
   Result := RGB(COL_BACK);
 end;
 
-// A stale reading fades the range colour towards slate, the more the older
-// it is: a tile that went quiet a few minutes ago still hints at where it
-// was, one that has been silent an hour says only that it is silent. Nobody
-// should act on a two-hour-old "high".
+// A stale reading drops its range colour altogether: the value is struck
+// out as not to be acted on, and a red left behind would still read as "low
+// right now" from across the room. How long it has been quiet is the text's
+// job, which escalates through Trndi's stages.
 function TileColor(state: TAccountState): TColor;
 begin
   if (state = nil) or (not state.haveCurrent) then
     exit(RGB(COL_NONE));
-  Result := LevelColor(state.current.level);
   if state.StaleStage <> ssFresh then
-    Result := Mix(Result, RGB(COL_STALE),
-      0.6 + 0.3 * EnsureRange(state.AgeMinutes / STALE_LOST_MINUTES, 0, 1));
+    exit(RGB(COL_STALE));
+  Result := LevelColor(state.current.level);
 end;
 
 function LevelCss(lvl: BGValLevel): string;
@@ -545,8 +546,8 @@ begin
   w := r.Right - r.Left;
   pad := Max(6, h div 30);
 
-  // Background by range; grey without a reading, faded towards slate when
-  // stale (see TileColor).
+  // Background by range; grey without a reading, slate when stale (see
+  // TileColor).
   stage := ssFresh;
   age := -1;
   if (FState <> nil) and FState.haveCurrent then
@@ -611,11 +612,18 @@ begin
     y := r.Top + Round(h * 0.16) + (Max(24, Round(h * 0.40)) - vh) div 2;
     x := r.Left + (w - valW - arrowW - pad) div 2;
     // A stale value and its arrow are the last known, not the current:
-    // drawn faded so the eye does not take them for a reading.
+    // drawn faded so the eye does not take them for a reading, and the value
+    // struck out as well, as Trndi strikes its own: faded alone reads as
+    // "de-emphasised", which is not the same claim as "do not act on this
+    // number". A stale value does not roll either: the OS draws the strike
+    // per TextOut, so a split value would have its line broken.
     if stage <> ssFresh then
+    begin
       Canvas.Font.Color := Mix(clWhite, bg, 0.3);
+      Canvas.Font.Style := [fsBold, fsStrikeOut];
+    end;
     Canvas.Font.Height := -vh;
-    if FRollFrom = '' then
+    if (FRollFrom = '') or (stage <> ssFresh) then
       Canvas.TextOut(x, y, s)
     else
     begin
@@ -639,6 +647,7 @@ begin
       Canvas.ClipRect := r;
       x := r.Left + (w - valW - arrowW - pad) div 2;
     end;
+    Canvas.Font.Style := [fsBold];
     Canvas.Font.Height := -ah;
     Canvas.TextOut(x + valW + pad, y + Round((vh - ah) * 0.55), arrow);
     Canvas.Font.Color := clWhite;

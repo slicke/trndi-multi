@@ -60,9 +60,13 @@ jobs:
             # vendored setup-lazarus action.
           - arch: arm64
             runner: ubuntu-26.04-arm
-            fpc_laz_url: "https://sourceforge.net/projects/lazarus/files/Lazarus%20Linux%20arm64%20DEB/Lazarus%204.8/fpc-laz_3.2.3-240813_arm64.deb/download"
-            fpc_src_url: "https://sourceforge.net/projects/lazarus/files/Lazarus%20Linux%20arm64%20DEB/Lazarus%204.8/fpc-src_3.2.3-240813_arm64.deb/download"
-            laz_url: "https://sourceforge.net/projects/lazarus/files/Lazarus%20Linux%20arm64%20DEB/Lazarus%204.8/lazarus-project_4.8.0-0_arm64.deb/download"
+            # Trndi's arm64 pin, in download.lazarus-ide.org form: Trndi's
+            # fetch-toolchain names each file after the last URL segment
+            # (SourceForge's /download would make all three "download") and
+            # derives the SourceForge fallback from these itself.
+            fpc_laz_url: "https://download.lazarus-ide.org/Lazarus%20Linux%20arm64%20DEB/Lazarus%205.0RC1/fpc-laz_3.2.4-rc2_arm64.deb"
+            fpc_src_url: "https://download.lazarus-ide.org/Lazarus%20Linux%20arm64%20DEB/Lazarus%205.0RC1/fpc-src_3.2.4-rc2_arm64.deb"
+            laz_url: "https://download.lazarus-ide.org/Lazarus%20Linux%20arm64%20DEB/Lazarus%205.0RC1/lazarus-project_5.0.0-0_arm64.deb"
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
@@ -158,7 +162,9 @@ jobs:
 
   macos:
     needs: version
-    runs-on: macos-14
+    # macos-14 is retired (GitHub cancels the job before it starts);
+    # macos-26 is what Trndi's own CI uses.
+    runs-on: macos-26
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4

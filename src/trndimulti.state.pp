@@ -346,6 +346,31 @@ begin
   end;
 end;
 
+// A backend that sends no delta of its own (Dexcom Share: its driver takes
+// the change from the reading after, and getCurrent asks for one reading)
+// gets one from the reading before it in the history, as Trndi's main
+// window falls back to bgs[0] - bgs[1]. Only over a gap under two
+// intervals, Trndi's DELTA_MAX: across a dropped stretch the difference is
+// not "the change", and no delta beats a wrong one. history is sorted
+// oldest first (TidyHistory).
+procedure FillMissingDelta(var cur: BGReading; const history: BGResults;
+  intervalMin: integer);
+var
+  i: integer;
+begin
+  if cur.empty or (not cur.deltaEmpty) then
+    exit;
+  for i := High(history) downto 0 do
+    // Older by more than a few seconds: the newest history entry is
+    // usually the current reading itself.
+    if history[i].date < IncSecond(cur.date, -30) then
+    begin
+      if MinutesBetween(cur.date, history[i].date) < 2 * Max(1, intervalMin) then
+        cur.update(cur.val - history[i].val, BGDelta);
+      exit;
+    end;
+end;
+
 procedure TFetchThread.Execute;
 var
   api: TrndiAPI;
@@ -385,6 +410,8 @@ begin
       FHistory := api.getReadings(HISTORY_MINUTES,
         HISTORY_MINUTES div Max(1, api.getReportingInterval) + 16);
       TidyHistory(FHistory, IncMinute(Now, -HISTORY_MINUTES));
+      if FHave then
+        FillMissingDelta(FCurrent, FHistory, api.getReportingInterval);
       if (not FHave) and (Length(FHistory) = 0) then
         FErr := api.errormsg;
     end;

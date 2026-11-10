@@ -50,6 +50,10 @@
   still, so 5.4 -> 5.6 turns one wheel and 9.9 -> 10.0 turns them all. Only a
   number changing into a number in the same unit rolls; the first value, a
   unit switch and HIGH/LOW appear in one step.
+
+  The fill fades into a new colour as Trndi's window does, over the same
+  700 ms with the same ease-in-out; the first colour, and the first after the
+  tile is given another account, appear at once.
 }
 unit trndimulti.tile;
 
@@ -72,10 +76,18 @@ type
     FShownUnit: BGUnit;     // Unit FShown is in
     FRollFrom: string;      // Value being rolled away; '' when no roll is running
     FRollStart: QWord;      // GetTickCount64 when the roll began
-    FRollTimer: TTimer;     // Frame tick of the roll; nil until the first roll
+    FBg: TColor;            // Fill the last paint used
+    FBgFrom: TColor;        // Fill a running fade started from
+    FBgTarget: TColor;      // Fill the tile is fading to, or showing
+    FBgStart: QWord;        // GetTickCount64 when the fade began
+    FBgSet: boolean;        // False until a first fill, so that one does not fade
+    FBgFading: boolean;
+    FAnimTimer: TTimer;     // Frame tick of the roll and the fade; nil until the first
     procedure SetState(AValue: TAccountState);
-    procedure RollTick({%H-}Sender: TObject);
+    procedure AnimTick({%H-}Sender: TObject);
+    procedure StartAnim;
     procedure NoteShown(const AValue: string);
+    function FillFor(ATarget: TColor): TColor;
     procedure DrawSpark(const r: TRect; bg: TColor);
     procedure DrawText(x, y: integer; const s: string; how: TAlignment;
       w: integer = 0);
@@ -140,6 +152,8 @@ const
   // the same.
   ROLL_MS = 320;
   ROLL_TICK_MS = 16;
+  // Trndi's background fade (umain BG_FADE_MS).
+  BG_FADE_MS = 700;
 
 // The constants above read as RGB hex; TColor is BGR.
 function RGB(hex: longint): TColor;
@@ -272,8 +286,8 @@ end;
 
 destructor TAccountTile.Destroy;
 begin
-  if Assigned(FRollTimer) then
-    FRollTimer.Enabled := false;
+  if Assigned(FAnimTimer) then
+    FAnimTimer.Enabled := false;
   inherited Destroy;
 end;
 
@@ -286,19 +300,80 @@ begin
   FState := AValue;
   FShown := '';
   FRollFrom := '';
-  if Assigned(FRollTimer) then
-    FRollTimer.Enabled := false;
+  FBgSet := false;
+  FBgFading := false;
+  if Assigned(FAnimTimer) then
+    FAnimTimer.Enabled := false;
 end;
 
-procedure TAccountTile.RollTick(Sender: TObject);
+procedure TAccountTile.StartAnim;
 begin
-  if GetTickCount64 - FRollStart >= ROLL_MS then
+  if FAnimTimer = nil then
   begin
-    FRollFrom := '';
-    FRollTimer.Enabled := false;
+    FAnimTimer := TTimer.Create(Self);
+    FAnimTimer.Enabled := false;
+    FAnimTimer.Interval := ROLL_TICK_MS;
+    FAnimTimer.OnTimer := @AnimTick;
   end;
+  FAnimTimer.Enabled := true;
+end;
+
+// One frame of whatever is running. The roll ends here; the fade ends in
+// FillFor, on the paint that reaches its target, and the tick after that
+// finds nothing left to run.
+procedure TAccountTile.AnimTick(Sender: TObject);
+begin
+  if (FRollFrom <> '') and (GetTickCount64 - FRollStart >= ROLL_MS) then
+    FRollFrom := '';
+  if (FRollFrom = '') and (not FBgFading) then
+    FAnimTimer.Enabled := false;
   if not (csDestroying in ComponentState) then
     Invalidate;
+end;
+
+// The fill to paint now, on the way to ATarget. Called by Paint, like
+// NoteShown: a new colour is seen when the tile is repainted with it. A new
+// target mid-fade starts from the tone already reached.
+function TAccountTile.FillFor(ATarget: TColor): TColor;
+var
+  t: double;
+begin
+  if not FBgSet then
+  begin
+    FBgSet := true;
+    FBgFading := false;
+    FBgTarget := ATarget;
+    FBg := ATarget;
+  end
+  else if ATarget <> FBgTarget then
+  begin
+    FBgFrom := FBg;
+    FBgTarget := ATarget;
+    FBgStart := GetTickCount64;
+    FBgFading := not (csDestroying in ComponentState);
+    if FBgFading then
+      StartAnim
+    else
+      FBg := ATarget;
+  end;
+  if FBgFading then
+  begin
+    t := Min(1.0, (GetTickCount64 - FBgStart) / BG_FADE_MS);
+    // Ease-in-out, as Trndi's: colour has nothing to land, and the soft
+    // start keeps the change from reading as a jolt that then trails off.
+    if t < 0.5 then
+      t := 4 * t * t * t
+    else
+      t := 1 - 4 * (1 - t) * (1 - t) * (1 - t);
+    if t >= 1.0 then
+    begin
+      FBgFading := false;
+      FBg := FBgTarget;
+    end
+    else
+      FBg := Mix(FBgFrom, FBgTarget, t);
+  end;
+  Result := FBg;
 end;
 
 // Called by Paint with the value it is about to draw. The tile only learns
@@ -311,16 +386,9 @@ begin
     HasDigit(FShown) and HasDigit(AValue) and
     not (csDestroying in ComponentState) then
   begin
-    if FRollTimer = nil then
-    begin
-      FRollTimer := TTimer.Create(Self);
-      FRollTimer.Enabled := false;
-      FRollTimer.Interval := ROLL_TICK_MS;
-      FRollTimer.OnTimer := @RollTick;
-    end;
     FRollFrom := FShown;
     FRollStart := GetTickCount64;
-    FRollTimer.Enabled := true;
+    StartAnim;
   end
   else if FShownUnit <> FUnit then
     FRollFrom := '';
@@ -486,7 +554,7 @@ begin
     stage := FState.StaleStage;
     age := FState.AgeMinutes;
   end;
-  bg := TileColor(FState);
+  bg := FillFor(TileColor(FState));
   Canvas.Brush.Style := bsSolid;
   Canvas.Brush.Color := bg;
   Canvas.FillRect(r);

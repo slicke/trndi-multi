@@ -61,8 +61,8 @@ interface
 
 uses
 Classes, SysUtils, Math, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls,
-Dialogs, trndi.api, trndi.api.registry, trndimulti.accounts, Graphics,
-trndimulti.markdown;
+Dialogs, LCLIntf, trndi.api, trndi.api.registry, trndimulti.accounts, Graphics,
+trndimulti.markdown, InkLabel, InkMarkdown;
 
 {** Show the window modally. True when the user saved, in which case the
     store has changed and the caller should reload its accounts. }
@@ -85,6 +85,7 @@ type
     lbLimitsNote: TLabel;
     limitsMmol: boolean;     // Unit the limit boxes are showing
     btnRemove: TButton;
+    lbMore: TInkLabel;       // "More settings? ... in Trndi", beside Remove
     info: TAccountInfo;      // As loaded; name is the identity
     credsEdited: boolean;
     loginHidden: boolean;    // User and credential rows collapsed (web-login backend)
@@ -99,6 +100,7 @@ type
     FErased: TStringList;    // Removed with "erase settings"
     FBackends: TStringList;  // Picker entries: '' then display names
     FSnapshot: TTimer;       // Test hook, see the constructor
+    FInitial: string;        // Signature of the tabs as opened, see Signature
     procedure SnapshotTick(Sender: TObject);
     procedure AddPage(const a: TAccountInfo; select: boolean);
     function PageOf(sheet: TTabSheet): TAccountPage;
@@ -113,7 +115,9 @@ type
     procedure LimitsClick(Sender: TObject);
     procedure RemoveClick(Sender: TObject);
     procedure SaveClick(Sender: TObject);
+    procedure MoreLinkClick(Sender: TObject; const Url: string);
     function Collect(out list: TAccountEditList): boolean;
+    function Signature: string;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -130,6 +134,8 @@ const
   // What a tick in an empty pair starts from: the usual 70-180 mg/dL.
   DEFAULT_LO = 70;
   DEFAULT_HI = 180;
+  // Beside Remove. The link is handled here (MoreLinkClick), not opened.
+  NOTE_MORE = 'More settings? Configure them in <a href="trndi:open">Trndi</a>.';
   NOTE_LIMITS = 'Unticked, the backend''s own limits apply. Dexcom Share '
     + 'sends none: without limits set here or in Trndi, every value up to '
     + '400 mg/dL shows as in range.';
@@ -244,6 +250,7 @@ begin
   FPlus.Caption := ' + ';
   FPages.ActivePageIndex := 0;
   FLast := FPages.ActivePage;
+  FInitial := Signature;
 
   // Under the snapshot test hook (see umulti) there is nobody to click:
   // render this window beside the wall's snapshot and cancel.
@@ -476,6 +483,23 @@ begin
   // The default account is the unprefixed keys; Trndi has no way to remove
   // it either.
   pg.btnRemove.Enabled := a.name <> '';
+
+  // Everything else an account has (alerts, colours, extensions...) is
+  // Trndi's to set; the link starts it on this account.
+  // Anchored to the button rather than placed by its width, which AutoSize
+  // only settles later; transparent, so it sits on the tab's own face.
+  pg.lbMore := TInkLabel.Create(Self);
+  pg.lbMore.Parent := pg.sheet;
+  pg.lbMore.TextFormat := itfHTML;
+  pg.lbMore.Font.Color := clGrayText;
+  pg.lbMore.Caption := NOTE_MORE;
+  pg.lbMore.AutoSize := true;
+  pg.lbMore.AnchorSideLeft.Control := pg.btnRemove;
+  pg.lbMore.AnchorSideLeft.Side := asrRight;
+  pg.lbMore.AnchorSideTop.Control := pg.btnRemove;
+  pg.lbMore.AnchorSideTop.Side := asrCenter;
+  pg.lbMore.BorderSpacing.Left := 14;
+  pg.lbMore.OnLinkClick := @MoreLinkClick;
 
   SysChange(pg.cbSys);
   NickChange(pg.edNick);
@@ -801,6 +825,64 @@ begin
     end;
   end;
   Result := true;
+end;
+
+// Everything the tabs hold, as one string: different from FInitial when
+// something was changed, added or removed since the window opened.
+function TfAccounts.Signature: string;
+var
+  i: integer;
+  pg: TAccountPage;
+begin
+  Result := FErased.CommaText;
+  for i := 0 to FList.Count - 1 do
+  begin
+    pg := TAccountPage(FList[i]);
+    Result := Result + #1 + pg.info.name + #2 + pg.edNick.Text + #2 +
+      pg.cbSys.Text + #2 + pg.edUser.Text + #2 + pg.edPass.Text + #2 +
+      IntToStr(pg.rgUnit.ItemIndex) + #2 + BoolToStr(pg.cbLimits.Checked) +
+      pg.edLo.Text + #2 + pg.edHi.Text + #2 + BoolToStr(pg.cbRange.Checked) +
+      pg.edRangeLo.Text + #2 + pg.edRangeHi.Text;
+  end;
+end;
+
+// "Configure them in Trndi": save or drop what is open here first, since a
+// Save after editing in Trndi would put this window's copies back over
+// Trndi's; then close, and start Trndi on the tab's account. Trndi that is
+// already running only comes to the front, on whichever account it has.
+procedure TfAccounts.MoreLinkClick(Sender: TObject; const Url: string);
+var
+  pg: TAccountPage;
+  list: TAccountEditList;
+  saved: boolean;
+begin
+  pg := PageOf(TControl(Sender).Parent as TTabSheet);
+  if pg = nil then
+    exit;
+  saved := false;
+  if Signature <> FInitial then
+    case MessageDlg('Save the changes made here first?' + LineEnding +
+        LineEnding + 'This window closes while you work in Trndi; unsaved '
+        + 'changes are lost.', mtConfirmation, [mbYes, mbNo, mbCancel], 0) of
+      mrYes:
+      begin
+        if not Collect(list) then
+          exit;
+        SaveAccounts(list, FErased.ToStringArray);
+        saved := true;
+      end;
+      mrNo: ;
+    else
+      exit;
+    end;
+  SetTrndiStartAccount(pg.info.name);
+  if not OpenTrndi then
+    // Not installed where we look: where to get it.
+    OpenURL('https://github.com/slicke/trndi');
+  if saved then
+    ModalResult := mrOk
+  else
+    ModalResult := mrCancel;
 end;
 
 procedure TfAccounts.SaveClick(Sender: TObject);

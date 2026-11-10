@@ -170,6 +170,16 @@ procedure SaveAccounts(const accounts: TAccountEditList;
     a fetch thread: writes are serialised. }
 procedure StoreCredentials(const a: TAccountInfo; const creds: string);
 
+{** Have Trndi's account picker open on @param(name) ('' is the default
+    account) the next time Trndi starts: it preselects users.active, and
+    rewrites it on every start. }
+procedure SetTrndiStartAccount(const name: string);
+
+{** Start Trndi, or bring it to the front if it is running. False when it
+    could not be found: on macOS by its bundle identifier, elsewhere beside
+    this program, where Trndi's installers put it, or on the PATH. }
+function OpenTrndi: boolean;
+
 {** Build and connect the account's backend, then lay the user's thresholds
     on top of what it reported, exactly as the GUI does. False leaves the
     reason in @param(err) and @param(api) nil. Synchronous: call it off the
@@ -183,7 +193,7 @@ uses
 {$IF DEFINED(DARWIN)}
 MacOSAll,
 {$ENDIF}
-SyncObjs, trndi.types;
+SyncObjs, Process, FileUtil, trndi.types;
 
 var
   // Two accounts can rotate at the same moment on two fetch threads, and the
@@ -643,6 +653,96 @@ begin
     api.cgmRangeHi := a.ovrRangeHi;
   Result := true;
 end;
+
+procedure SetTrndiStartAccount(const name: string);
+var
+  native: TMultiNative;
+begin
+  storeLock.Acquire;
+  try
+    native := TMultiNative.Create;
+    try
+      native.configUser := '';
+      native.SetRootSetting('users.active', name);
+    finally
+      native.Free;
+    end;
+  finally
+    storeLock.Release;
+  end;
+end;
+
+{$IFNDEF DARWIN}
+// Starts exe without waiting for it; freeing the TProcess leaves it running.
+function StartDetached(const exe: string): boolean;
+var
+  p: TProcess;
+begin
+  Result := false;
+  if (exe = '') or (not FileExists(exe)) then
+    exit;
+  p := TProcess.Create(nil);
+  try
+    p.Executable := exe;
+    p.CurrentDirectory := ExtractFileDir(exe);
+    p.InheritHandles := false;
+    try
+      p.Execute;
+      Result := true;
+    except
+      Result := false;
+    end;
+  finally
+    p.Free;
+  end;
+end;
+{$ENDIF}
+
+function OpenTrndi: boolean;
+{$IFDEF DARWIN}
+var
+  output: string;
+begin
+  // LaunchServices finds the app wherever it is installed, and activates
+  // the running one rather than starting a second.
+  Result := RunCommand('/usr/bin/open', ['-b', 'com.slicke.Trndi'], output,
+    [poNoConsole]);
+end;
+{$ELSE}
+var
+  candidates: TStringList;
+  dir, exe: string;
+begin
+  Result := false;
+  candidates := TStringList.Create;
+  try
+    dir := ExtractFilePath(ParamStr(0));
+{$IFDEF WINDOWS}
+    // Trndi's installer goes to {autopf}\Trndi: Program Files for everyone,
+    // the per-user Programs folder for an unprivileged install.
+    candidates.Add(dir + 'Trndi.exe');
+    candidates.Add(IncludeTrailingPathDelimiter(
+      GetEnvironmentVariable('ProgramFiles')) + 'Trndi\Trndi.exe');
+    candidates.Add(IncludeTrailingPathDelimiter(
+      GetEnvironmentVariable('ProgramFiles(x86)')) + 'Trndi\Trndi.exe');
+    candidates.Add(IncludeTrailingPathDelimiter(
+      GetEnvironmentVariable('LOCALAPPDATA')) + 'Programs\Trndi\Trndi.exe');
+    candidates.Add(FindDefaultExecutablePath('Trndi.exe'));
+{$ELSE}
+    // The packages install the binary as Trndi (the .desktop file runs
+    // that); a build from source may be lower case.
+    candidates.Add(dir + 'Trndi');
+    candidates.Add(FindDefaultExecutablePath('Trndi'));
+    candidates.Add(FindDefaultExecutablePath('trndi'));
+{$ENDIF}
+    for exe in candidates do
+      if StartDetached(exe) then
+        exit(true);
+  finally
+    candidates.Free;
+  end;
+end;
+{$ENDIF}
 
 initialization
   storeLock := TCriticalSection.Create;

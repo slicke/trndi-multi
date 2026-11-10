@@ -73,6 +73,10 @@ type
     wizHi, wizLo: integer;
     ovrHi, ovrLo: integer;
     ovrRangeHi, ovrRangeLo: integer;
+    // Trndi's override.enabled and override.range: whether each pair above
+    // is the user's. Trndi deletes a pair when its box is unticked, so a
+    // pair that is set is in force either way; these say what to show.
+    ovrOn, ovrRangeOn: boolean;
   end;
   TAccountList = array of TAccountInfo;
 
@@ -375,6 +379,10 @@ begin
   Result.ovrLo := StrToIntDef(native.GetSetting('override.lo'), 0);
   Result.ovrRangeHi := StrToIntDef(native.GetSetting('override.rangehi'), 0);
   Result.ovrRangeLo := StrToIntDef(native.GetSetting('override.rangelo'), 0);
+  Result.ovrOn := native.GetBoolSetting('override.enabled', false) or
+    ((Result.ovrHi > 0) and (Result.ovrLo > 0));
+  Result.ovrRangeOn := native.GetBoolSetting('override.range', false) or
+    ((Result.ovrRangeHi > 0) and (Result.ovrRangeLo > 0));
 end;
 
 function ListAccounts: TAccountList;
@@ -502,6 +510,28 @@ var
       native.SetSetting(key, val);
   end;
 
+  procedure PutPair(on: boolean; const flag, keyLo, keyHi: string;
+    lo, hi: integer);
+  begin
+    if on then
+    begin
+      Put(flag, 'true');
+      Put(keyLo, IntToStr(lo));
+      Put(keyHi, IntToStr(hi));
+    end
+    else
+    begin
+      // Only touch a flag that is set, so an account never given limits
+      // gains no keys from being saved here.
+      if native.GetSetting(flag, '') <> '' then
+        Put(flag, 'false');
+      if native.GetSetting(keyLo, '') <> '' then
+        native.DeleteSetting(keyLo);
+      if native.GetSetting(keyHi, '') <> '' then
+        native.DeleteSetting(keyHi);
+    end;
+  end;
+
 begin
   storeLock.Acquire;
   try
@@ -532,6 +562,12 @@ begin
             Put('unit', 'mmol')
           else
             Put('unit', 'mgdl');
+          // The limits as Trndi's settings window writes them: the flag,
+          // and the pair in mg/dL, deleted when the flag is off.
+          PutPair(info.ovrOn, 'override.enabled', 'override.lo', 'override.hi',
+            info.ovrLo, info.ovrHi);
+          PutPair(info.ovrRangeOn, 'override.range', 'override.rangelo',
+            'override.rangehi', info.ovrRangeLo, info.ovrRangeHi);
         end;
 
       native.configUser := '';

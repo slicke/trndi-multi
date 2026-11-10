@@ -349,24 +349,31 @@ end;
 // A backend that sends no delta of its own (Dexcom Share: its driver takes
 // the change from the reading after, and getCurrent asks for one reading)
 // gets one from the reading before it in the history, as Trndi's main
-// window falls back to bgs[0] - bgs[1]. Only over a gap under two
-// intervals, Trndi's DELTA_MAX: across a dropped stretch the difference is
-// not "the change", and no delta beats a wrong one. history is sorted
-// oldest first (TidyHistory).
+// window falls back to bgs[0] - bgs[1]. One dropped reading is bridged, as
+// Nightscout's own delta is, with the difference scaled to one interval as
+// Trndi scales it, so +0.9 means the same with or without the gap; across a
+// longer stretch the difference is not "the change", and no delta beats a
+// wrong one. history is sorted oldest first (TidyHistory).
 procedure FillMissingDelta(var cur: BGReading; const history: BGResults;
   intervalMin: integer);
 var
   i: integer;
+  gapMin: double;
 begin
   if cur.empty or (not cur.deltaEmpty) then
     exit;
+  intervalMin := Max(1, intervalMin);
   for i := High(history) downto 0 do
     // Older by more than a few seconds: the newest history entry is
     // usually the current reading itself.
     if history[i].date < IncSecond(cur.date, -30) then
     begin
-      if MinutesBetween(cur.date, history[i].date) < 2 * Max(1, intervalMin) then
-        cur.update(cur.val - history[i].val, BGDelta);
+      gapMin := MinuteSpan(cur.date, history[i].date);
+      if gapMin < 3 * intervalMin then
+        // Clamped to a full interval, as Trndi does, so two samples closer
+        // together than usual cannot blow a small drift up.
+        cur.update((cur.val - history[i].val) * intervalMin /
+          Max(gapMin, intervalMin), BGDelta);
       exit;
     end;
 end;

@@ -71,7 +71,9 @@ jobs:
           submodules: recursive
 
       # The submodule carries Trndi's composite action, so the toolchain pin
-      # is Trndi's and moves when the submodule does.
+      # is Trndi's and moves when the submodule does. It calls
+      # ./.github/actions/fetch-toolchain, which resolves against this
+      # repo's root, so that path is a symlink into the submodule.
       - name: Install Lazarus/FPC toolchain
         uses: ./vendor/trndi/.github/actions/setup-lazarus
         with:

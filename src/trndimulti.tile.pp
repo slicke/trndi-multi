@@ -43,6 +43,13 @@
 
   Everything scales with the tile's height so the same drawing works as a
   small window on a desk and a full-screen wall display.
+
+  A value giving way to the next rolls over as Trndi's main reading does
+  (its utabularlabel): the digits that differ slide up out of the line while
+  the new ones rise in from below, and the digits shared at either end stand
+  still, so 5.4 -> 5.6 turns one wheel and 9.9 -> 10.0 turns them all. Only a
+  number changing into a number in the same unit rolls; the first value, a
+  unit switch and HIGH/LOW appear in one step.
 }
 unit trndimulti.tile;
 
@@ -51,8 +58,8 @@ unit trndimulti.tile;
 interface
 
 uses
-Classes, SysUtils, Controls, Graphics, Types, Math, DateUtils, LCLIntf, LCLType,
-trndi.types, trndi.api, trndi.raster, trndimulti.accounts, trndimulti.state;
+Classes, SysUtils, Controls, Graphics, ExtCtrls, Types, Math, DateUtils, LCLIntf,
+LCLType, trndi.types, trndi.api, trndi.raster, trndimulti.accounts, trndimulti.state;
 
 type
   {** A TCustomControl that paints a @link(TAccountState). The state is owned
@@ -61,6 +68,14 @@ type
   private
     FState: TAccountState;
     FUnit: BGUnit;
+    FShown: string;         // Value the last paint drew; '' before the first
+    FShownUnit: BGUnit;     // Unit FShown is in
+    FRollFrom: string;      // Value being rolled away; '' when no roll is running
+    FRollStart: QWord;      // GetTickCount64 when the roll began
+    FRollTimer: TTimer;     // Frame tick of the roll; nil until the first roll
+    procedure SetState(AValue: TAccountState);
+    procedure RollTick({%H-}Sender: TObject);
+    procedure NoteShown(const AValue: string);
     procedure DrawSpark(const r: TRect; bg: TColor);
     procedure DrawText(x, y: integer; const s: string; how: TAlignment;
       w: integer = 0);
@@ -68,7 +83,8 @@ type
     procedure Paint; override;
   public
     constructor Create(AOwner: TComponent); override;
-    property State: TAccountState read FState write FState;
+    destructor Destroy; override;
+    property State: TAccountState read FState write SetState;
     property DisplayUnit: BGUnit read FUnit write FUnit;
     {** A left click, for the window to open the account's detail view on;
         the right button goes to PopupMenu as on every control. }
@@ -120,6 +136,10 @@ const
   COL_STALE = $404A5C;
   COL_STALE_LATE = $F2C94C;
   COL_STALE_LOST = $FF9E8A;
+  // Trndi's pace for its rolling reading (utabularlabel), so the two read
+  // the same.
+  ROLL_MS = 320;
+  ROLL_TICK_MS = 16;
 
 // The constants above read as RGB hex; TColor is BGR.
 function RGB(hex: longint): TColor;
@@ -204,11 +224,108 @@ begin
   Result := rc.Bottom - rc.Top;
 end;
 
+function HasDigit(const s: string): boolean;
+var
+  i: integer;
+begin
+  for i := 1 to Length(s) do
+    if s[i] in ['0'..'9'] then
+      exit(true);
+  Result := false;
+end;
+
+// Splits an old and a new value into the bytes they share at either end and
+// the differing middle, so only "4" rolls in "5.4" -> "5.6" and everything in
+// "9.9" -> "10.0". The cuts are backed off to UTF-8 code point starts so a
+// glyph that differs in its tail bytes rolls whole. A copy of Trndi's
+// SplitRoll (utabularlabel), which that unit keeps to itself.
+procedure SplitRoll(const AOld, ANew: string; out APrefix, AOldMid, ANewMid,
+  ASuffix: string);
+var
+  p, sfx, oldLen, newLen: integer;
+begin
+  oldLen := Length(AOld);
+  newLen := Length(ANew);
+  p := 0;
+  while (p < oldLen) and (p < newLen) and (AOld[p + 1] = ANew[p + 1]) do
+    Inc(p);
+  while (p > 0) and (p < oldLen) and (Ord(AOld[p + 1]) and $C0 = $80) do
+    Dec(p);
+  sfx := 0;
+  while (sfx < oldLen - p) and (sfx < newLen - p) and
+    (AOld[oldLen - sfx] = ANew[newLen - sfx]) do
+    Inc(sfx);
+  while (sfx > 0) and (Ord(AOld[oldLen - sfx + 1]) and $C0 = $80) do
+    Dec(sfx);
+  APrefix := Copy(AOld, 1, p);
+  AOldMid := Copy(AOld, p + 1, oldLen - p - sfx);
+  ANewMid := Copy(ANew, p + 1, newLen - p - sfx);
+  ASuffix := Copy(AOld, oldLen - sfx + 1, sfx);
+end;
+
 constructor TAccountTile.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   DoubleBuffered := true;
   FUnit := mmol;
+end;
+
+destructor TAccountTile.Destroy;
+begin
+  if Assigned(FRollTimer) then
+    FRollTimer.Enabled := false;
+  inherited Destroy;
+end;
+
+// Another account's state is not the next value of this one's: drop what
+// was shown, so its first value appears rather than rolls.
+procedure TAccountTile.SetState(AValue: TAccountState);
+begin
+  if FState = AValue then
+    exit;
+  FState := AValue;
+  FShown := '';
+  FRollFrom := '';
+  if Assigned(FRollTimer) then
+    FRollTimer.Enabled := false;
+end;
+
+procedure TAccountTile.RollTick(Sender: TObject);
+begin
+  if GetTickCount64 - FRollStart >= ROLL_MS then
+  begin
+    FRollFrom := '';
+    FRollTimer.Enabled := false;
+  end;
+  if not (csDestroying in ComponentState) then
+    Invalidate;
+end;
+
+// Called by Paint with the value it is about to draw. The tile only learns
+// of a new reading by being repainted, so this is where a change is seen.
+// Only the timer is touched here, never the canvas. A roll already under
+// way restarts from the value it was heading for.
+procedure TAccountTile.NoteShown(const AValue: string);
+begin
+  if (AValue <> FShown) and (FShown <> '') and (FShownUnit = FUnit) and
+    HasDigit(FShown) and HasDigit(AValue) and
+    not (csDestroying in ComponentState) then
+  begin
+    if FRollTimer = nil then
+    begin
+      FRollTimer := TTimer.Create(Self);
+      FRollTimer.Enabled := false;
+      FRollTimer.Interval := ROLL_TICK_MS;
+      FRollTimer.OnTimer := @RollTick;
+    end;
+    FRollFrom := FShown;
+    FRollStart := GetTickCount64;
+    FRollTimer.Enabled := true;
+  end
+  else if FShownUnit <> FUnit then
+    FRollFrom := '';
+  FShown := AValue;
+  FShownUnit := FUnit;
 end;
 
 procedure TAccountTile.DrawText(x, y: integer; const s: string;
@@ -347,10 +464,10 @@ end;
 procedure TAccountTile.Paint;
 var
   r: TRect;
-  h, w, pad, x, y, vh, ah, valW, arrowW, age: integer;
-  scale: double;
+  h, w, pad, x, y, vh, ah, valW, arrowW, age, th, dy, oldMidW, newMidW: integer;
+  scale, t: double;
   bg, ink: TColor;
-  s, arrow, footer: string;
+  s, arrow, footer, prefix, oldMid, newMid, suffix: string;
   style: TTextStyle;
   box: TRect;
   stage: TStaleStage;
@@ -392,6 +509,7 @@ begin
     // the height, then shrunk if the pair would not fit the width: a 22.2
     // in a narrow tile must still be a 22.2, not a 22.
     s := FState.current.format(FUnit, BG_MSG_SHORT);
+    NoteShown(s);
     arrow := BG_TREND_ARROWS_UTF[FState.current.trend];
     Canvas.Font.Style := [fsBold];
     vh := Max(24, Round(h * 0.40));
@@ -410,6 +528,18 @@ begin
       Canvas.Font.Height := -ah;
       arrowW := Canvas.TextWidth(arrow);
     end;
+    // Mid-roll the value's width glides from the old one's to the new one's
+    // ("9.9" -> "10.0"), so the centred pair and the arrow slide over rather
+    // than jump. Ease-out, so the new value lands rather than stops.
+    t := 1;
+    if FRollFrom <> '' then
+    begin
+      t := Min(1.0, (GetTickCount64 - FRollStart) / ROLL_MS);
+      t := 1 - (1 - t) * (1 - t) * (1 - t);
+      Canvas.Font.Height := -vh;
+      valW := Round(Canvas.TextWidth(FRollFrom) +
+        (valW - Canvas.TextWidth(FRollFrom)) * t);
+    end;
     y := r.Top + Round(h * 0.16) + (Max(24, Round(h * 0.40)) - vh) div 2;
     x := r.Left + (w - valW - arrowW - pad) div 2;
     // A stale value and its arrow are the last known, not the current:
@@ -417,7 +547,30 @@ begin
     if stage <> ssFresh then
       Canvas.Font.Color := Mix(clWhite, bg, 0.3);
     Canvas.Font.Height := -vh;
-    Canvas.TextOut(x, y, s);
+    if FRollFrom = '' then
+      Canvas.TextOut(x, y, s)
+    else
+    begin
+      // The shared head and tail stand still while the differing middle
+      // turns over, old sliding up out of the line as new rises into it
+      // from below, clipped to the line so nothing shows above or below.
+      SplitRoll(FRollFrom, s, prefix, oldMid, newMid, suffix);
+      th := Canvas.TextHeight(s);
+      oldMidW := Canvas.TextWidth(oldMid);
+      newMidW := Canvas.TextWidth(newMid);
+      dy := Round(t * th);
+      Canvas.ClipRect := Rect(r.Left, y, r.Right, y + th);
+      Canvas.Clipping := true;
+      Canvas.TextOut(x, y, prefix);
+      Inc(x, Canvas.TextWidth(prefix));
+      Canvas.TextOut(x, y - dy, oldMid);
+      Canvas.TextOut(x, y + th - dy, newMid);
+      if suffix <> '' then
+        Canvas.TextOut(x + Round(oldMidW + (newMidW - oldMidW) * t), y, suffix);
+      Canvas.Clipping := false;
+      Canvas.ClipRect := r;
+      x := r.Left + (w - valW - arrowW - pad) div 2;
+    end;
     Canvas.Font.Height := -ah;
     Canvas.TextOut(x + valW + pad, y + Round((vh - ah) * 0.55), arrow);
     Canvas.Font.Color := clWhite;
@@ -479,7 +632,10 @@ begin
     // long unbreakable tokens (a backend code, a URL) and can run to several
     // sentences, so shrink the font until the widest word fits the width
     // and the wrapped text fits the height, rather than let TextRect clip
-    // it at both ends.
+    // it at both ends. A value after this one appears rather than rolls:
+    // nothing on the tile is giving way to it.
+    FShown := '';
+    FRollFrom := '';
     Canvas.Font.Style := [];
     if FState.Busy and (not FState.everFetched) then
       s := 'Connecting…'
